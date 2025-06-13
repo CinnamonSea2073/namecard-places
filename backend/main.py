@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
@@ -62,6 +62,7 @@ def init_db():
             latitude REAL NOT NULL,
             longitude REAL NOT NULL,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            session_id TEXT,
             user_agent TEXT,
             ip_address TEXT
         )
@@ -182,7 +183,7 @@ async def get_all_locations_admin(admin_password: str):
     conn = sqlite3.connect('namecard_places.db')
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT latitude, longitude, timestamp, user_agent, ip_address 
+        SELECT id, latitude, longitude, timestamp, session_id, user_agent, ip_address 
         FROM locations 
         ORDER BY timestamp DESC
     ''')
@@ -191,14 +192,54 @@ async def get_all_locations_admin(admin_password: str):
     
     return [
         {
-            "latitude": loc[0],
-            "longitude": loc[1],
-            "timestamp": loc[2],
-            "user_agent": loc[3],
-            "ip_address": loc[4]
+            "id": loc[0],
+            "latitude": loc[1],
+            "longitude": loc[2],
+            "timestamp": loc[3],
+            "session_id": loc[4],
+            "user_agent": loc[5],
+            "ip_address": loc[6]
         }
         for loc in locations
     ]
+
+# 管理者による記録削除
+@app.delete("/api/admin/locations/{location_id}")
+async def delete_location_admin(location_id: int, admin_password: str):
+    verify_admin_password(admin_password)
+    
+    conn = sqlite3.connect('namecard_places.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('DELETE FROM locations WHERE id = ?', (location_id,))
+    
+    if cursor.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Location not found")
+    
+    conn.commit()
+    conn.close()
+    
+    return {"message": "Location deleted successfully"}
+
+# 管理者による位置情報削除
+@app.delete("/api/admin/locations/{location_id}")
+async def admin_delete_location(location_id: int, admin_password: str):
+    verify_admin_password(admin_password)
+    
+    conn = sqlite3.connect('namecard_places.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('DELETE FROM locations WHERE id = ?', (location_id,))
+    
+    if cursor.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Location not found")
+    
+    conn.commit()
+    conn.close()
+    
+    return {"message": "Location deleted successfully"}
 
 # ===== 公開API =====
 
@@ -214,7 +255,7 @@ async def get_recording_status():
 
 # 位置情報記録（セッション有効時のみ）
 @app.post("/api/record-location")
-async def record_location(location: LocationRecord):
+async def record_location(location: LocationRecord, x_session_id: str = Header(None)):
     session = get_recording_session()
     
     if not session["enabled"]:
@@ -224,14 +265,15 @@ async def record_location(location: LocationRecord):
     conn = sqlite3.connect('namecard_places.db')
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO locations (latitude, longitude, user_agent, ip_address)
-        VALUES (?, ?, ?, ?)
-    ''', (location.latitude, location.longitude, "browser", "unknown"))
+        INSERT INTO locations (latitude, longitude, session_id, user_agent, ip_address)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (location.latitude, location.longitude, x_session_id, "browser", "unknown"))
     
+    location_id = cursor.lastrowid
     conn.commit()
     conn.close()
     
-    return {"message": "Location recorded successfully"}
+    return {"message": "Location recorded successfully", "id": location_id}
 
 # 位置情報取得（公開用）
 @app.get("/api/locations")
@@ -239,7 +281,7 @@ async def get_locations():
     conn = sqlite3.connect('namecard_places.db')
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT latitude, longitude, timestamp FROM locations
+        SELECT id, latitude, longitude, timestamp, session_id FROM locations
         ORDER BY timestamp DESC
         LIMIT 100
     ''')
@@ -248,12 +290,38 @@ async def get_locations():
     
     return [
         {
-            "latitude": loc[0],
-            "longitude": loc[1],
-            "timestamp": loc[2]
+            "id": loc[0],
+            "latitude": loc[1],
+            "longitude": loc[2],
+            "timestamp": loc[3],
+            "session_id": loc[4]
         }
         for loc in locations
     ]
+
+# 位置情報削除（ユーザー自身の記録のみ）
+@app.delete("/api/locations/{location_id}")
+async def delete_location(location_id: int, x_session_id: str = Header(None)):
+    if not x_session_id:
+        raise HTTPException(status_code=400, detail="Session ID is required")
+    
+    conn = sqlite3.connect('namecard_places.db')
+    cursor = conn.cursor()
+    
+    # セッションIDが一致する記録のみ削除
+    cursor.execute('''
+        DELETE FROM locations 
+        WHERE id = ? AND session_id = ?
+    ''', (location_id, x_session_id))
+    
+    if cursor.rowcount == 0:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Location not found or not owned by user")
+    
+    conn.commit()
+    conn.close()
+    
+    return {"message": "Location deleted successfully"}
 
 # 名刺情報取得
 @app.get("/api/card-info")

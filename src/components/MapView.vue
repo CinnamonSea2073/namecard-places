@@ -34,8 +34,50 @@ const success = ref(false)
 const recordingStatus = ref({ enabled: false, description: null })
 const recordingMethod = ref('click') // 'click' or 'gps'
 const isLocating = ref(false)
+const userSessionId = ref(null)
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
+
+// セッションIDを生成または取得
+const getUserSessionId = () => {
+  if (!userSessionId.value) {
+    userSessionId.value = localStorage.getItem('userSessionId') || 
+      'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
+    localStorage.setItem('userSessionId', userSessionId.value)
+  }
+  return userSessionId.value
+}
+
+// グローバル関数として削除機能を追加
+window.deleteLocation = async (locationId) => {
+  if (!confirm('この記録を削除しますか？')) return
+  
+  try {
+    await axios.delete(`${API_BASE}/api/locations/${locationId}`, {
+      headers: {
+        'X-Session-Id': getUserSessionId()
+      }
+    })
+    
+    // 地図から該当のピンを削除
+    const vectorLayer = map.value.getLayers().getArray()[1]
+    const vectorSource = vectorLayer.getSource()
+    const features = vectorSource.getFeatures()
+    
+    const featureToRemove = features.find(f => f.get('locationId') === locationId)
+    if (featureToRemove) {
+      vectorSource.removeFeature(featureToRemove)
+    }
+    
+    // ポップアップを閉じる
+    popup.value.setPosition(undefined)
+    
+    alert('記録を削除しました')
+  } catch (err) {
+    console.error('削除エラー:', err)
+    alert('削除に失敗しました: ' + (err.response?.data?.detail || err.message))
+  }
+}
 
 onMounted(async () => {
   if (!props.viewOnly) {
@@ -72,18 +114,28 @@ const initMap = () => {
     source: vectorSource,
     style: (feature) => {
       const timestamp = feature.get('timestamp')
+      const isUserRecord = feature.get('isUserRecord')
+      
       return new Style({
         image: new Circle({
-          radius: 8,
-          fill: new Fill({ color: 'rgba(255, 0, 0, 0.8)' }),
-          stroke: new Stroke({ color: 'white', width: 2 })
+          radius: 12,
+          fill: new Fill({ 
+            color: isUserRecord ? 'rgba(34, 197, 94, 0.9)' : 'rgba(239, 68, 68, 0.9)' 
+          }),
+          stroke: new Stroke({ 
+            color: 'white', 
+            width: 3,
+            lineDash: isUserRecord ? [5, 5] : undefined
+          })
         }),
         text: timestamp ? new Text({
           text: new Date(timestamp).toLocaleDateString('ja-JP'),
-          offsetY: -15,
-          font: '12px sans-serif',
-          fill: new Fill({ color: '#333' }),
-          stroke: new Stroke({ color: 'white', width: 2 })
+          offsetY: -20,
+          font: 'bold 12px sans-serif',
+          fill: new Fill({ color: '#1f2937' }),
+          stroke: new Stroke({ color: 'white', width: 3 }),
+          backgroundFill: new Fill({ color: 'rgba(255, 255, 255, 0.8)' }),
+          padding: [2, 4, 2, 4]
         }) : undefined
       })
     }
@@ -111,7 +163,6 @@ const initMap = () => {
     offset: [0, -10]
   })
   map.value.addOverlay(popup.value)
-
   // マップクリックイベント
   map.value.on('click', (event) => {
     // ピンがクリックされた場合の処理
@@ -119,12 +170,21 @@ const initMap = () => {
     if (feature) {
       const coordinate = feature.getGeometry().getCoordinates()
       const timestamp = feature.get('timestamp')
+      const locationId = feature.get('locationId')
+      const isUserRecord = feature.get('isUserRecord')
+      
       if (timestamp) {
         const date = new Date(timestamp)
+        const deleteButton = isUserRecord 
+          ? `<button onclick="deleteLocation(${locationId})" class="mt-2 bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm">削除</button>`
+          : ''
+        
         popupRef.value.innerHTML = `
           <div class="bg-white p-3 rounded-lg shadow-lg border">
             <div class="font-semibold text-gray-800">記録日時</div>
             <div class="text-sm text-gray-600">${date.toLocaleString('ja-JP')}</div>
+            ${isUserRecord ? '<div class="text-xs text-green-600 mt-1">あなたの記録</div>' : ''}
+            ${deleteButton}
           </div>
         `
         popup.value.setPosition(coordinate)
@@ -167,6 +227,7 @@ const loadExistingLocations = async () => {
   try {
     const response = await axios.get(`${API_BASE}/api/locations`)
     const locations = response.data
+    const currentSessionId = getUserSessionId()
 
     const vectorLayer = map.value.getLayers().getArray()[1]
     const vectorSource = vectorLayer.getSource()
@@ -174,7 +235,9 @@ const loadExistingLocations = async () => {
     locations.forEach(location => {
       const feature = new Feature({
         geometry: new Point(fromLonLat([location.longitude, location.latitude])),
-        timestamp: location.timestamp
+        timestamp: location.timestamp,
+        locationId: location.id,
+        isUserRecord: location.session_id === currentSessionId
       })
       vectorSource.addFeature(feature)
     })
@@ -237,7 +300,11 @@ const confirmLocation = async () => {
   error.value = null
 
   try {
-    await axios.post(`${API_BASE}/api/record-location`, currentLocation.value)
+    const response = await axios.post(`${API_BASE}/api/record-location`, currentLocation.value, {
+      headers: {
+        'X-Session-Id': getUserSessionId()
+      }
+    })
 
     // 地図に新しいピンを追加
     const vectorLayer = map.value.getLayers().getArray()[1]
@@ -248,7 +315,9 @@ const confirmLocation = async () => {
         currentLocation.value.longitude,
         currentLocation.value.latitude
       ])),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      locationId: response.data.id,
+      isUserRecord: true
     })
     vectorSource.addFeature(feature)
 
@@ -311,14 +380,21 @@ const goBack = () => {
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
           </svg>
           位置記録について
-        </h3>
-        <div class="text-gray-600 mb-6">
+        </h3>        <div class="text-gray-600 mb-6">
           <p class="mb-3">この機能では、名刺を交換した場所を地図上に記録できます。</p>
           <div class="bg-blue-50 p-3 rounded-lg mb-3">
             <h4 class="font-semibold text-blue-800 mb-2">記録方法：</h4>
             <ul class="text-sm text-blue-700 space-y-1">
               <li>• <strong>地図クリック</strong>：地図上の場所をクリックして記録</li>
               <li>• <strong>GPS利用</strong>：現在位置を自動取得して記録</li>
+            </ul>
+          </div>
+          <div class="bg-yellow-50 p-3 rounded-lg mb-3">
+            <h4 class="font-semibold text-yellow-800 mb-2">⚠️ 重要な注意点：</h4>
+            <ul class="text-sm text-yellow-700 space-y-1">
+              <li>• <strong>記録期限</strong>：管理者が設定した期間内のみ記録可能</li>
+              <li>• <strong>期限切れ防止</strong>：関係ない時間での誤記録を防ぐため</li>
+              <li>• <strong>削除機能</strong>：ご自身の記録のみ削除可能（緑色のピン）</li>
             </ul>
           </div>
           <p class="text-sm text-gray-500">

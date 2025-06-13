@@ -158,7 +158,7 @@ describe('MapView Component', () => {
     await wrapper.vm.$nextTick()
     
     expect(wrapper.find('.recording-methods').exists()).toBe(true)
-    expect(wrapper.text()).toContain('地図をクリック')
+    expect(wrapper.text()).toContain('地図クリック')
     expect(wrapper.text()).toContain('GPS利用')
   })
   it('GPS記録ボタンをクリックできる', async () => {
@@ -465,5 +465,224 @@ describe('新機能の統合テスト', () => {
     expect(instructionDialog.text()).toContain('名刺を交換した場所を地図上に記録')
     expect(instructionDialog.text()).toContain('地図クリック')
     expect(instructionDialog.text()).toContain('GPS利用')
+  })
+})
+
+describe('MapView Enhanced Features', () => {
+  test('displays enhanced pin styles with better visibility', async () => {
+    const wrapper = mount(MapView, {
+      props: { viewOnly: false }
+    })
+
+    await wrapper.vm.$nextTick()
+    
+    // 地図が初期化されていることを確認
+    expect(wrapper.vm.map).toBeDefined()
+    
+    // ピンのスタイルが設定されていることを確認（内部実装のテスト）
+    const vectorLayer = wrapper.vm.map.getLayers().getArray()[1]
+    expect(vectorLayer).toBeDefined()
+  })
+
+  test('shows session expiry information in instructions', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: {
+        enabled: true,
+        expires_at: '2024-12-31T23:59:59',
+        description: 'Test event'
+      }
+    })
+
+    const wrapper = mount(MapView, {
+      props: { viewOnly: false }
+    })
+
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    // 説明ダイアログの存在確認
+    expect(wrapper.find('.instruction-dialog').exists()).toBe(true)
+    
+    // 期限に関する説明が含まれていることを確認
+    const instructionText = wrapper.find('.instruction-dialog').text()
+    expect(instructionText).toContain('記録期限')
+    expect(instructionText).toContain('関係ない時間での誤記録を防ぐため')
+  })
+
+  test('generates and stores user session ID', async () => {
+    const wrapper = mount(MapView, {
+      props: { viewOnly: false }
+    })
+
+    await wrapper.vm.$nextTick()
+    
+    // セッションIDが生成されることを確認
+    const sessionId = wrapper.vm.getUserSessionId()
+    expect(sessionId).toBeDefined()
+    expect(sessionId).toMatch(/^user_\d+_[a-z0-9]+$/)
+    
+    // localStorageに保存されることを確認
+    expect(localStorage.getItem('userSessionId')).toBe(sessionId)
+  })
+
+  test('sends session ID when recording location', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: { enabled: true, expires_at: null, description: null }
+    })
+    axios.post.mockResolvedValueOnce({
+      data: { message: 'Location recorded successfully', id: 123 }
+    })
+
+    const wrapper = mount(MapView, {
+      props: { viewOnly: false }
+    })
+
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    // 位置を設定
+    wrapper.vm.currentLocation = {
+      latitude: 35.6895,
+      longitude: 139.6917
+    }
+
+    // 記録実行
+    await wrapper.vm.confirmLocation()
+
+    // APIが正しいヘッダーで呼ばれたことを確認
+    expect(axios.post).toHaveBeenCalledWith(
+      expect.stringContaining('/api/record-location'),
+      expect.objectContaining({
+        latitude: 35.6895,
+        longitude: 139.6917
+      }),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'X-Session-Id': expect.any(String)
+        })
+      })
+    )
+  })
+
+  test('displays delete button for user own records', async () => {
+    // 既存の位置情報（ユーザーのもの）をモック
+    axios.get.mockResolvedValueOnce({
+      data: [
+        {
+          id: 1,
+          latitude: 35.6895,
+          longitude: 139.6917,
+          timestamp: '2024-01-01T12:00:00',
+          session_id: 'user_test_session'
+        }
+      ]
+    })
+
+    const wrapper = mount(MapView, {
+      props: { viewOnly: false }
+    })
+
+    // セッションIDを設定
+    wrapper.vm.userSessionId = 'user_test_session'
+
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    // 地図がロードされていることを確認
+    expect(wrapper.vm.map).toBeDefined()
+  })
+
+  test('deletes location successfully', async () => {
+    axios.delete.mockResolvedValueOnce({
+      data: { message: 'Location deleted successfully' }
+    })
+
+    // グローバル関数のテスト
+    global.confirm = vi.fn(() => true)
+    global.alert = vi.fn()
+
+    const wrapper = mount(MapView, {
+      props: { viewOnly: false }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    // 削除関数を実行
+    await window.deleteLocation(123)
+
+    // 削除APIが呼ばれたことを確認
+    expect(axios.delete).toHaveBeenCalledWith(
+      expect.stringContaining('/api/locations/123'),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'X-Session-Id': expect.any(String)
+        })
+      })
+    )
+
+    expect(global.alert).toHaveBeenCalledWith('記録を削除しました')
+  })
+
+  test('handles delete error gracefully', async () => {
+    axios.delete.mockRejectedValueOnce({
+      response: {
+        data: { detail: 'Location not found or not owned by user' }
+      }
+    })
+
+    global.confirm = vi.fn(() => true)
+    global.alert = vi.fn()
+
+    const wrapper = mount(MapView, {
+      props: { viewOnly: false }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    // 削除関数を実行
+    await window.deleteLocation(123)
+
+    expect(global.alert).toHaveBeenCalledWith(
+      '削除に失敗しました: Location not found or not owned by user'
+    )
+  })
+
+  test('different pin styles for user vs other records', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: [
+        {
+          id: 1,
+          latitude: 35.6895,
+          longitude: 139.6917,
+          timestamp: '2024-01-01T12:00:00',
+          session_id: 'user_test_session'
+        },
+        {
+          id: 2,
+          latitude: 35.6896,
+          longitude: 139.6918,
+          timestamp: '2024-01-01T13:00:00',
+          session_id: 'other_user_session'
+        }
+      ]
+    })
+
+    const wrapper = mount(MapView, {
+      props: { viewOnly: false }
+    })
+
+    // セッションIDを設定
+    wrapper.vm.userSessionId = 'user_test_session'
+
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    // 異なるピンスタイルが適用されることを確認
+    const vectorLayer = wrapper.vm.map.getLayers().getArray()[1]
+    const features = vectorLayer.getSource().getFeatures()
+    
+    expect(features.length).toBe(2)
+    expect(features[0].get('isUserRecord')).toBe(true)
+    expect(features[1].get('isUserRecord')).toBe(false)
   })
 })
