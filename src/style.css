@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* OpenLayers CSS */
+@import 'ol/ol.css';
+
+/* カスタムスタイル */
+.map-container {
+  height: 60vh;
+  width: 100%;
+}
+
+.card-container {
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.qr-code-container {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  display: inline-block;
+}
