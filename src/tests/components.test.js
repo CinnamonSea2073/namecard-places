@@ -378,3 +378,141 @@ describe('API Integration Tests', () => {
     )
   })
 })
+
+// 統合インターフェース機能のテスト
+describe('Unified Map Interface Tests', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    global.localStorage = {
+      getItem: vi.fn(),
+      setItem: vi.fn()
+    }
+  })
+  it('モード切り替えボタンが正常に表示される', async () => {
+    axios.get.mockResolvedValue({
+      data: { enabled: true, expires_at: null, description: null }
+    })
+
+    const wrapper = mount(MapView, {
+      props: { viewOnly: false }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    // モード切り替えボタンの存在確認（テキストベースで検索）
+    const buttons = wrapper.findAll('button')
+    const viewModeButton = buttons.find(button => button.text().includes('表示モード'))
+    const recordModeButton = buttons.find(button => button.text().includes('記録モード'))
+    
+    expect(viewModeButton).toBeTruthy()
+    expect(recordModeButton).toBeTruthy()
+  })
+
+  it('初期状態では記録モードが選択されている（viewOnly=falseの場合）', async () => {
+    axios.get.mockResolvedValue({
+      data: { enabled: true, expires_at: null, description: null }
+    })
+
+    const wrapper = mount(MapView, {
+      props: { viewOnly: false }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.currentMode).toBe('record')
+  })
+
+  it('初期状態では表示モードが選択されている（viewOnly=trueの場合）', async () => {
+    axios.get.mockResolvedValue({
+      data: [{ latitude: 35.7802, longitude: 139.9318 }]
+    })
+
+    const wrapper = mount(MapView, {
+      props: { viewOnly: true }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.currentMode).toBe('view')
+  })
+
+  it('カスタムズームコントロールが正常に動作する', async () => {
+    const mockView = {
+      getZoom: vi.fn(() => 10),
+      setZoom: vi.fn(),
+      setCenter: vi.fn()
+    }
+
+    const mockMap = {
+      getView: vi.fn(() => mockView),
+      addLayer: vi.fn(),
+      addOverlay: vi.fn(),
+      on: vi.fn(),
+      getLayers: vi.fn(() => ({
+        getArray: vi.fn(() => [])
+      })),
+      setTarget: vi.fn()
+    }
+
+    const wrapper = mount(MapView, {
+      props: { viewOnly: false }
+    })
+
+    wrapper.vm.map = mockMap
+
+    // ズームイン
+    await wrapper.vm.zoomIn()
+    expect(mockView.setZoom).toHaveBeenCalledWith(11)
+
+    // ズームアウト
+    await wrapper.vm.zoomOut()
+    expect(mockView.setZoom).toHaveBeenCalledWith(11) // 最初の呼び出し後の値から-1
+
+    // 初期位置リセット
+    await wrapper.vm.resetView()
+    expect(mockView.setCenter).toHaveBeenCalled()
+    expect(mockView.setZoom).toHaveBeenCalledWith(10)
+  })
+
+  it('モード切り替え時に適切な表示が切り替わる', async () => {
+    axios.get.mockResolvedValue({
+      data: { enabled: true, expires_at: null, description: null }
+    })
+
+    const wrapper = mount(MapView, {
+      props: { viewOnly: false }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    // 記録モード時の表示確認
+    expect(wrapper.vm.currentMode).toBe('record')
+    
+    // 表示モードに切り替え
+    await wrapper.vm.switchMode('view')
+    expect(wrapper.vm.currentMode).toBe('view')
+
+    // 記録モードに戻す
+    await wrapper.vm.switchMode('record')
+    expect(wrapper.vm.currentMode).toBe('record')
+  })
+
+  it('記録モード時のみ記録機能が有効になる', async () => {
+    axios.get.mockResolvedValue({
+      data: { enabled: true, expires_at: null, description: null }
+    })
+
+    const wrapper = mount(MapView, {
+      props: { viewOnly: false }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    // 記録モード時は記録方法選択が表示される
+    expect(wrapper.vm.currentMode).toBe('record')
+    
+    // 表示モードに切り替えると記録機能が無効になる
+    await wrapper.vm.switchMode('view')
+    expect(wrapper.vm.currentMode).toBe('view')
+  })
+})

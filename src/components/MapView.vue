@@ -21,6 +21,9 @@ const props = defineProps({
 
 const emit = defineEmits(['back-to-card'])
 
+// 内部的なモード管理（新機能）
+const currentMode = ref(props.viewOnly ? 'view' : 'record') // 'view' or 'record'
+
 const mapRef = ref(null)
 const popupRef = ref(null)
 const map = ref(null)
@@ -37,6 +40,14 @@ const isLocating = ref(false)
 const userSessionId = ref(null)
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
+
+// モード切り替え関数
+const switchMode = (mode) => {
+  currentMode.value = mode
+  if (mode === 'record' && !recordingStatus.value.enabled) {
+    checkRecordingStatus()
+  }
+}
 
 // セッションIDを生成または取得
 const getUserSessionId = () => {
@@ -162,7 +173,31 @@ const checkExistingUserRecord = async () => {
     return false
   } catch (err) {
     console.error('既存記録チェックエラー:', err)
-    return false
+    return false  }
+}
+
+// カスタムズーム制御関数
+const zoomIn = () => {
+  if (map.value) {
+    const view = map.value.getView()
+    const zoom = view.getZoom()
+    view.setZoom(zoom + 1)
+  }
+}
+
+const zoomOut = () => {
+  if (map.value) {
+    const view = map.value.getView()
+    const zoom = view.getZoom()
+    view.setZoom(zoom - 1)
+  }
+}
+
+const resetView = () => {
+  if (map.value) {
+    const view = map.value.getView()
+    view.setCenter(fromLonLat([139.6917, 35.6895])) // 東京駅
+    view.setZoom(10)
   }
 }
 
@@ -202,9 +237,9 @@ const initMap = () => {
       })
     }
   })
-
   map.value = new Map({
     target: mapRef.value,
+    controls: [], // デフォルトコントロールを無効化
     layers: [
       new TileLayer({
         source: new OSM()
@@ -261,10 +296,8 @@ const initMap = () => {
         popup.value.setPosition(coordinate)
       }
       return
-    }
-
-    // 地図のクリック（記録機能）
-    if (!props.viewOnly && recordingStatus.value.enabled && recordingMethod.value === 'click') {
+    }    // 地図のクリック（記録機能）
+    if (currentMode === 'record' && recordingStatus.value.enabled && recordingMethod.value === 'click') {
       const coordinate = toLonLat(event.coordinate)
       currentLocation.value = {
         latitude: coordinate[1],
@@ -507,10 +540,10 @@ const deleteLocation = async (locationId) => {
 </script>
 
 <template>
-  <div class="max-w-4xl mx-auto">
-    <!-- ヘッダー -->
+  <div class="max-w-4xl mx-auto">    <!-- ヘッダー -->
     <div class="bg-white rounded-t-2xl shadow-lg p-4 mb-0">
-      <div class="flex items-center justify-between">        <button 
+      <div class="flex items-center justify-between">
+        <button 
           @click="goBack"
           data-testid="back-button"
           class="flex items-center text-gray-600 hover:text-gray-800 transition duration-200"
@@ -518,15 +551,39 @@ const deleteLocation = async (locationId) => {
           <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
           </svg>
-          {{ props.viewOnly ? '名刺に戻る' : '名刺に戻る' }}
+          名刺に戻る
         </button>
-        <h2 class="text-xl font-bold text-gray-800">
-          {{ props.viewOnly ? '出会った場所の地図' : '出会った場所を記録' }}
-        </h2>
+        
+        <!-- モード切り替えボタン -->
+        <div class="flex items-center space-x-2">
+          <button 
+            @click="switchMode('view')"
+            :class="[
+              'px-4 py-2 rounded-lg text-sm font-medium transition duration-200',
+              currentMode === 'view' 
+                ? 'bg-blue-500 text-white' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            ]"
+          >
+            表示モード
+          </button>
+          <button 
+            @click="switchMode('record')"
+            :class="[
+              'px-4 py-2 rounded-lg text-sm font-medium transition duration-200',
+              currentMode === 'record' 
+                ? 'bg-orange-500 text-white' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            ]"
+          >
+            記録モード
+          </button>
+        </div>
+        
         <div class="w-20"></div> <!-- スペーサー -->
       </div>
     </div>    <!-- 説明ダイアログ -->
-    <div v-if="showInstructionDialog && !props.viewOnly" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div v-if="showInstructionDialog && currentMode === 'record'" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div class="bg-white rounded-2xl p-6 max-w-md mx-4 shadow-2xl instruction-dialog">
         <h3 class="text-lg font-bold text-gray-800 mb-4">
           <svg class="w-6 h-6 inline mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -572,10 +629,8 @@ const deleteLocation = async (locationId) => {
     <!-- 成功メッセージ -->
     <div v-if="success" class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
       <p class="text-green-800">位置情報が記録されました！</p>
-    </div>
-
-    <!-- 記録が無効な場合 -->
-    <div v-if="!recordingStatus.enabled && !error && !props.viewOnly" class="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+    </div>    <!-- 記録が無効な場合 -->
+    <div v-if="!recordingStatus.enabled && !error && currentMode === 'record'" class="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
       <div class="text-center">
         <svg class="mx-auto h-12 w-12 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16c-.77.833.192 2.5 1.732 2.5z"></path>
@@ -587,7 +642,7 @@ const deleteLocation = async (locationId) => {
         </p>
       </div>
     </div>    <!-- 記録方法選択（記録有効時のみ） -->
-    <div v-if="recordingStatus.enabled && !props.viewOnly" class="bg-white rounded-lg shadow-lg p-4 mb-4 recording-methods">
+    <div v-if="recordingStatus.enabled && currentMode === 'record'" class="bg-white rounded-lg shadow-lg p-4 mb-4 recording-methods">
       <h3 class="text-lg font-semibold text-gray-800 mb-3">記録方法を選択</h3>
       <div class="grid grid-cols-2 gap-3">
         <button 
@@ -624,11 +679,9 @@ const deleteLocation = async (locationId) => {
           <div class="text-xs text-gray-500">現在位置を取得</div>
         </button>
       </div>
-    </div>
-
-    <!-- 地図表示 -->
-    <div class="bg-white rounded-b-2xl shadow-lg overflow-hidden">
-      <div v-if="!props.viewOnly && recordingStatus.enabled" class="p-4 bg-blue-50 border-b">
+    </div>    <!-- 地図表示 -->
+    <div class="bg-white rounded-b-2xl shadow-lg overflow-hidden relative">
+      <div v-if="currentMode === 'record' && recordingStatus.enabled" class="p-4 bg-blue-50 border-b">
         <p class="text-sm text-blue-800">
           <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
@@ -640,13 +693,44 @@ const deleteLocation = async (locationId) => {
         </p>
       </div>
       
-      <div v-if="props.viewOnly" class="p-4 bg-green-50 border-b">
+      <div v-if="currentMode === 'view'" class="p-4 bg-green-50 border-b">
         <p class="text-sm text-green-800">
           <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 9m0 10V9m0 0L9 7"></path>
           </svg>
           記録された場所が表示されています。ピンをクリックすると記録日時が表示されます。
         </p>
+      </div>
+      
+      <!-- カスタム地図コントロール -->
+      <div class="absolute top-4 left-4 z-10 flex flex-col space-y-2">
+        <button 
+          @click="zoomIn"
+          class="w-10 h-10 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg shadow-sm flex items-center justify-center transition duration-200"
+          title="拡大"
+        >
+          <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+          </svg>
+        </button>
+        <button 
+          @click="zoomOut"
+          class="w-10 h-10 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg shadow-sm flex items-center justify-center transition duration-200"
+          title="縮小"
+        >
+          <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 12H6"></path>
+          </svg>
+        </button>
+        <button 
+          @click="resetView"
+          class="w-10 h-10 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg shadow-sm flex items-center justify-center transition duration-200"
+          title="初期位置に戻る"
+        >
+          <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
+          </svg>
+        </button>
       </div>
       
       <div ref="mapRef" class="map-container"></div>
@@ -680,6 +764,59 @@ const deleteLocation = async (locationId) => {
           </button>
         </div>
       </div>
-    </div>
-  </div>
+    </div>  </div>
 </template>
+
+<style scoped>
+.map-container {
+  height: 400px;
+  width: 100%;
+}
+
+.ol-popup {
+  position: absolute;
+  background-color: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  padding: 15px;
+  border: none;
+  bottom: 12px;
+  left: -50px;
+  min-width: 200px;
+}
+
+.ol-popup:after, .ol-popup:before {
+  top: 100%;
+  border: solid transparent;
+  content: " ";
+  height: 0;
+  width: 0;
+  position: absolute;
+  pointer-events: none;
+}
+
+.ol-popup:after {
+  border-color: rgba(255, 255, 255, 0);
+  border-top-color: white;
+  border-width: 10px;
+  left: 48px;
+  margin-left: -10px;
+}
+
+.ol-popup:before {
+  border-color: rgba(0, 0, 0, 0);
+  border-top-color: rgba(0, 0, 0, 0.1);
+  border-width: 11px;
+  left: 48px;
+  margin-left: -11px;
+}
+
+.instruction-dialog {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.recording-methods {
+  border: 2px solid #e5e7eb;
+}
+</style>
