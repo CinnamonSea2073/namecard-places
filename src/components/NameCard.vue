@@ -19,11 +19,34 @@ onMounted(async () => {
 
 const loadCardInfo = async () => {
   try {
-    const response = await axios.get(`${API_BASE}/api/card-info`)
+    console.log('API_BASE:', API_BASE)
+    console.log('Making request to:', `${API_BASE}/api/card-info`)
+    
+    const response = await axios.get(`${API_BASE}/api/card-info`, {
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+      timeout: 10000, // 10秒のタイムアウト
+    })
+    console.log('Response status:', response.status)
+    console.log('Response headers:', response.headers)
+    console.log('Response data:', response.data)
+    
     cardInfo.value = response.data
   } catch (err) {
-    error.value = 'カード情報の読み込みに失敗しました'
     console.error('Error loading card info:', err)
+    console.error('Error response:', err.response)
+    console.error('Error message:', err.message)
+    console.error('Error config:', err.config)
+    
+    if (err.response) {
+      error.value = `カード情報の読み込みに失敗しました (${err.response.status}: ${err.response.statusText})`
+    } else if (err.request) {
+      error.value = 'サーバーへの接続に失敗しました'
+    } else {
+      error.value = 'カード情報の読み込みに失敗しました'
+    }
   } finally {
     loading.value = false
   }

@@ -40,11 +40,13 @@ npm install
 
 # 開発サーバーの起動（フロントエンド）
 npm run dev
+# フロントエンドは http://localhost:3001 で起動
 
 # バックエンドサーバーの起動
 cd backend
 pip install -r requirements.txt
 uvicorn main:app --reload
+# バックエンドは http://localhost:8000 で起動
 ```
 
 ### Docker Composeでの実行
