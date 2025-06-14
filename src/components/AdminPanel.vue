@@ -92,6 +92,23 @@ const loadLocations = async () => {
   }
 }
 
+const deleteLocation = async (locationId) => {
+  if (!confirm('この位置記録を削除しますか？')) return
+  
+  try {
+    await axios.delete(`${API_BASE}/api/admin/locations/${locationId}`, {
+      params: { admin_password: adminPassword.value }
+    })
+    
+    // 一覧から削除
+    locations.value = locations.value.filter(loc => loc.id !== locationId)
+    alert('位置記録を削除しました')
+  } catch (err) {
+    console.error('位置記録の削除エラー:', err)
+    alert('削除に失敗しました: ' + (err.response?.data?.detail || err.message))
+  }
+}
+
 const updateSession = async () => {
   loading.value = true
   try {
@@ -308,6 +325,9 @@ const getStatusColor = () => {
                   <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Google Maps
                   </th>
+                  <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    操作
+                  </th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-200">
@@ -330,9 +350,17 @@ const getStatusColor = () => {
                       地図で見る
                     </a>
                   </td>
+                  <td class="px-4 py-2 text-sm">
+                    <button 
+                      @click="deleteLocation(location.id)"
+                      class="text-red-600 hover:text-red-800"
+                    >
+                      削除
+                    </button>
+                  </td>
                 </tr>
                 <tr v-if="locations.length === 0">
-                  <td colspan="4" class="px-4 py-8 text-center text-gray-500">
+                  <td colspan="5" class="px-4 py-8 text-center text-gray-500">
                     まだ位置情報が記録されていません
                   </td>
                 </tr>

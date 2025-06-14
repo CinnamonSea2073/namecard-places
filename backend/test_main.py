@@ -269,6 +269,52 @@ class TestLocationAPI:
         assert "session_id" in locations[0]
         assert locations[0]["session_id"] == TEST_SESSION_ID
 
+    def test_timezone_handling_jst(self, test_client):
+        """日本標準時のタイムゾーン処理テスト"""
+        # 記録を有効化
+        test_client.post("/api/admin/enable-recording", 
+                       json={"enabled": True, "expires_at": None, "description": "JST test"},
+                       params={"admin_password": "admin123"})
+        
+        # 位置記録
+        test_client.post(
+            "/api/record-location",
+            json={"latitude": 35.6895, "longitude": 139.6917},
+            headers={"X-Session-Id": TEST_SESSION_ID}
+        )
+        
+        # 位置情報取得してタイムゾーンを確認
+        response = test_client.get("/api/locations")
+        assert response.status_code == 200
+        locations = response.json()
+        assert len(locations) > 0
+        
+        # タイムスタンプがISO形式でタイムゾーン情報を含むことを確認
+        timestamp = locations[0]["timestamp"]
+        assert "+09:00" in timestamp or "Asia/Tokyo" in timestamp or timestamp.endswith("+09:00")
+
+    def test_no_auto_redirect_after_recording(self, test_client):
+        """記録後の自動遷移なしのテスト（APIレベル）"""
+        # 記録を有効化
+        test_client.post("/api/admin/enable-recording", 
+                       json={"enabled": True, "expires_at": None, "description": "No redirect test"},
+                       params={"admin_password": "admin123"})
+        
+        # 位置記録
+        response = test_client.post(
+            "/api/record-location",
+            json={"latitude": 35.6895, "longitude": 139.6917},
+            headers={"X-Session-Id": TEST_SESSION_ID}
+        )
+        
+        # 記録成功後もセッションが有効であることを確認
+        assert response.status_code == 200
+        
+        # 記録状態が有効のままであることを確認
+        status_response = test_client.get("/api/recording-status")
+        assert status_response.status_code == 200
+        assert status_response.json()["enabled"] == True
+
     def test_delete_location_success(self, test_client):
         """位置記録削除の成功テスト"""
         # 記録を有効化
@@ -374,7 +420,6 @@ class TestLocationAPI:
         assert "id" in locations[0]
         assert "session_id" in locations[0]
         assert locations[0]["session_id"] == TEST_SESSION_ID
-
 
 class TestDataValidation:
     """データ検証のテスト"""
