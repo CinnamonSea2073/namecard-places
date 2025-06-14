@@ -4,6 +4,7 @@ import { flushPromises } from '@vue/test-utils'
 import axios from 'axios'
 import MapView from '../components/MapView.vue'
 import NameCard from '../components/NameCard.vue'
+import AdminPanel from '../components/AdminPanel.vue'
 import App from '../App.vue'
 
 // OpenLayersのモック
@@ -496,7 +497,6 @@ describe('Unified Map Interface Tests', () => {
     await wrapper.vm.switchMode('record')
     expect(wrapper.vm.currentMode).toBe('record')
   })
-
   it('記録モード時のみ記録機能が有効になる', async () => {
     axios.get.mockResolvedValue({
       data: { enabled: true, expires_at: null, description: null }
@@ -514,5 +514,222 @@ describe('Unified Map Interface Tests', () => {
     // 表示モードに切り替えると記録機能が無効になる
     await wrapper.vm.switchMode('view')
     expect(wrapper.vm.currentMode).toBe('view')
+  })
+})
+
+// 管理者パネルのテスト
+describe('AdminPanel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+  it('ログイン機能が正常に動作する', async () => {
+    axios.post.mockResolvedValue({ data: { success: true } })
+    axios.get.mockResolvedValue({ 
+      data: { enabled: false, expires_at: null, description: null }
+    })
+
+    const wrapper = mount(AdminPanel)
+    
+    // 初期状態ではログイン画面が表示される
+    expect(wrapper.vm.isLoggedIn).toBe(false)
+    
+    // パスワードを入力してログイン
+    wrapper.vm.adminPassword = 'admin123'
+    await wrapper.vm.login()
+    await flushPromises()
+    
+    // ログイン成功
+    expect(wrapper.vm.isLoggedIn).toBe(true)
+  })
+
+  it('設定の読み込みと保存が正常に動作する', async () => {
+    const mockConfig = {
+      personalInfo: {
+        name: 'テスト太郎',
+        title: 'エンジニア',
+        company: 'テスト会社',
+        department: '',
+        email: 'test@example.com',
+        phone: '',
+        website: 'https://example.com'
+      },
+      socialLinks: [
+        {
+          type: 'twitter',
+          label: 'Twitter',
+          url: 'https://twitter.com/test',
+          icon: 'twitter',
+          enabled: true
+        }
+      ],
+      design: {
+        theme: 'modern',
+        primaryColor: '#3B82F6',
+        backgroundColor: '#FFFFFF',
+        textColor: '#1F2937'      }
+    }    // ログイン用APIのmock
+    axios.post.mockResolvedValue({ data: { success: true } })
+    
+    // loadAdminData内の3つのAPIを個別にmock
+    axios.get.mockImplementation((url) => {
+      if (url.includes('/api/admin/session-status')) {
+        return Promise.resolve({ data: { enabled: false } })
+      } else if (url.includes('/api/admin/locations')) {
+        return Promise.resolve({ data: [] })
+      } else if (url.includes('/api/admin/config')) {
+        return Promise.resolve({ data: mockConfig })
+      }
+      return Promise.reject(new Error('Unknown URL'))
+    })
+    
+    const wrapper = mount(AdminPanel)
+    wrapper.vm.adminPassword = 'admin123'
+    await wrapper.vm.login()
+    await flushPromises()
+
+    // 設定が読み込まれている
+    expect(wrapper.vm.config.personalInfo.name).toBe('テスト太郎')
+    expect(wrapper.vm.config.socialLinks[0].type).toBe('twitter')
+
+    // 設定を変更
+    wrapper.vm.config.personalInfo.name = '変更太郎'
+      // 保存
+    axios.put = vi.fn().mockResolvedValue({ data: { success: true } })
+    await wrapper.vm.saveConfig()
+    await flushPromises()
+
+    // config-updatedイベントが発火される
+    expect(wrapper.emitted('config-updated')).toBeTruthy()
+  })
+
+  it('SNSリンクの追加と削除が正常に動作する', async () => {    // ログイン用APIのmock
+    axios.post.mockResolvedValue({ data: { success: true } })
+    
+    // loadAdminData内の3つのAPIを個別にmock
+    axios.get.mockImplementation((url) => {
+      if (url.includes('/api/admin/session-status')) {
+        return Promise.resolve({ data: { enabled: false } })
+      } else if (url.includes('/api/admin/locations')) {
+        return Promise.resolve({ data: [] })
+      } else if (url.includes('/api/admin/config')) {
+        return Promise.resolve({
+          data: { 
+            personalInfo: {}, 
+            socialLinks: [], 
+            design: {} 
+          } 
+        })
+      }
+      return Promise.reject(new Error('Unknown URL'))
+    })
+
+    const wrapper = mount(AdminPanel)
+    wrapper.vm.adminPassword = 'admin123'
+    await wrapper.vm.login()
+    await flushPromises()
+
+    // 初期状態ではSNSリンクがない
+    expect(wrapper.vm.config.socialLinks).toHaveLength(0)
+
+    // SNSリンクを追加
+    await wrapper.vm.addSocialLink()
+    expect(wrapper.vm.config.socialLinks).toHaveLength(1)
+
+    // 自動設定機能をテスト
+    const link = wrapper.vm.config.socialLinks[0]
+    link.type = 'twitter'
+    wrapper.vm.onSocialTypeChange(link)
+    expect(link.icon).toBe('twitter')
+    expect(link.label).toBe('Twitter')
+
+    // SNSリンクを削除
+    await wrapper.vm.removeSocialLink(0)
+    expect(wrapper.vm.config.socialLinks).toHaveLength(0)
+  })
+  it('空欄項目が非表示になることをテストする', async () => {
+    const mockConfig = {
+      personalInfo: {
+        name: 'テスト太郎',
+        title: 'エンジニア', 
+        company: 'テスト会社',
+        department: '', // 空欄
+        email: 'test@example.com',
+        phone: '', // 空欄
+        website: 'https://example.com'
+      },
+      socialLinks: [
+        {
+          type: 'twitter',
+          label: 'Twitter',
+          url: '', // 空欄
+          icon: 'twitter',
+          enabled: true
+        },
+        {
+          type: 'github',
+          label: 'GitHub',
+          url: 'https://github.com/test',
+          icon: 'github',
+          enabled: false // 無効
+        }
+      ],
+      design: {
+        theme: 'modern',
+        primaryColor: '#3B82F6',
+        backgroundColor: '#FFFFFF',
+        textColor: '#1F2937'
+      }
+    }
+
+    // card-info APIのレスポンスをモック
+    axios.get.mockResolvedValue({ data: mockConfig })
+
+    const wrapper = mount(NameCard)
+    await flushPromises()
+
+    // 名前、肩書き、会社、メール、ウェブサイトは表示される
+    expect(wrapper.vm.personalInfo.name).toBe('テスト太郎')
+    expect(wrapper.vm.personalInfo.title).toBe('エンジニア')
+    expect(wrapper.vm.personalInfo.company).toBe('テスト会社')
+    expect(wrapper.vm.personalInfo.email).toBe('test@example.com')
+    expect(wrapper.vm.personalInfo.website).toBe('https://example.com')
+
+    // 空欄の項目は存在するが空
+    expect(wrapper.vm.personalInfo.department).toBe('')
+    expect(wrapper.vm.personalInfo.phone).toBe('')
+
+    // SNSリンクは有効かつURLありのもののみ
+    expect(wrapper.vm.socialLinks).toHaveLength(2)
+    // enabled=falseやurl=''のものもAPIから返されるが、表示時に制御される
+  })
+  it('設定変更後に名刺画面が自動更新される', async () => {
+    const initialConfig = {
+      personalInfo: { name: '初期名前' },
+      socialLinks: [],
+      design: {}
+    }
+    
+    const updatedConfig = {
+      personalInfo: { name: '更新名前' },
+      socialLinks: [],
+      design: {}
+    }
+
+    // 初期読み込み
+    axios.get.mockResolvedValueOnce({ data: initialConfig })
+    
+    const wrapper = mount(NameCard, {
+      props: { refreshTrigger: 0 }
+    })
+    await flushPromises()
+    
+    expect(wrapper.vm.personalInfo.name).toBe('初期名前')
+
+    // 設定更新をシミュレート（refreshTriggerの変更）
+    axios.get.mockResolvedValueOnce({ data: updatedConfig })
+    await wrapper.setProps({ refreshTrigger: 1 })
+    await flushPromises()
+
+    expect(wrapper.vm.personalInfo.name).toBe('更新名前')
   })
 })

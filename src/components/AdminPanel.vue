@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 
-const emit = defineEmits(['back-to-card'])
+const emit = defineEmits(['back-to-card', 'config-updated'])
 
 const adminPassword = ref('')
 const isLoggedIn = ref(false)
@@ -11,6 +11,30 @@ const sessionStatus = ref({ enabled: false, expires_at: null, description: null 
 const newSession = ref({ enabled: false, expires_at: '', description: '' })
 const locations = ref([])
 const loading = ref(false)
+
+// 設定管理用の状態
+const config = ref({
+  personalInfo: {
+    name: '',
+    title: '',
+    company: '',
+    department: '',
+    email: '',
+    phone: '',
+    website: ''
+  },
+  socialLinks: [],
+  design: {
+    theme: 'modern',
+    primaryColor: '#3B82F6',
+    backgroundColor: '#FFFFFF',
+    textColor: '#1F2937'
+  }
+})
+const configLoading = ref(false)
+const configError = ref('')
+const configSuccess = ref('')
+const activeTab = ref('session') // 'session', 'config', 'locations'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 
@@ -59,8 +83,82 @@ const checkAdminAccess = async () => {
 const loadAdminData = async () => {
   await Promise.all([
     loadSessionStatus(),
-    loadLocations()
+    loadLocations(),
+    loadConfig()
   ])
+}
+
+// 設定管理関数
+const loadConfig = async () => {
+  configLoading.value = true
+  configError.value = ''
+  try {
+    const response = await axios.get(`${API_BASE}/api/admin/config`, {
+      params: { admin_password: adminPassword.value }
+    })
+    config.value = response.data
+  } catch (err) {
+    configError.value = '設定の読み込みに失敗しました'
+    console.error('Error loading config:', err)
+  } finally {
+    configLoading.value = false
+  }
+}
+
+const saveConfig = async () => {
+  configLoading.value = true
+  configError.value = ''
+  configSuccess.value = ''
+  try {
+    await axios.put(`${API_BASE}/api/admin/config`, config.value, {
+      params: { admin_password: adminPassword.value }
+    })
+    configSuccess.value = '設定を保存しました'
+    // 名刺画面に更新を通知
+    emit('config-updated')
+    setTimeout(() => {
+      configSuccess.value = ''
+    }, 3000)
+  } catch (err) {
+    configError.value = '設定の保存に失敗しました'
+    console.error('Error saving config:', err)
+  } finally {
+    configLoading.value = false
+  }
+}
+
+const addSocialLink = () => {
+  config.value.socialLinks.push({
+    type: '',
+    label: '',
+    url: '',
+    icon: '',
+    enabled: false
+  })
+}
+
+const removeSocialLink = (index) => {
+  config.value.socialLinks.splice(index, 1)
+}
+
+// SNSタイプが変更されたときにアイコンとラベルを自動設定
+const onSocialTypeChange = (link) => {
+  const typeMap = {
+    twitter: { icon: 'twitter', label: 'Twitter' },
+    facebook: { icon: 'facebook', label: 'Facebook' },
+    linkedin: { icon: 'linkedin', label: 'LinkedIn' },
+    instagram: { icon: 'instagram', label: 'Instagram' },
+    github: { icon: 'github', label: 'GitHub' },
+    youtube: { icon: 'youtube', label: 'YouTube' },
+    tiktok: { icon: 'tiktok', label: 'TikTok' }
+  }
+  
+  if (typeMap[link.type]) {
+    link.icon = typeMap[link.type].icon
+    if (!link.label || Object.values(typeMap).some(t => t.label === link.label)) {
+      link.label = typeMap[link.type].label
+    }
+  }
 }
 
 const loadSessionStatus = async () => {
@@ -214,10 +312,47 @@ const getStatusColor = () => {
             </button>
           </div>
         </div>
-      </div>
-
-      <!-- 管理画面 -->
+      </div>      <!-- 管理画面 -->
       <div v-else class="p-6">
+        <!-- タブナビゲーション -->
+        <div class="border-b border-gray-200 mb-6">
+          <nav class="-mb-px flex space-x-8">
+            <button
+              @click="activeTab = 'session'"
+              :class="[
+                activeTab === 'session' 
+                  ? 'border-blue-500 text-blue-600' 
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
+                'whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm transition duration-200'
+              ]"
+            >
+              セッション管理
+            </button>
+            <button
+              @click="activeTab = 'config'"
+              :class="[
+                activeTab === 'config' 
+                  ? 'border-blue-500 text-blue-600' 
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
+                'whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm transition duration-200'
+              ]"
+            >
+              名刺設定
+            </button>
+            <button
+              @click="activeTab = 'locations'"
+              :class="[
+                activeTab === 'locations' 
+                  ? 'border-blue-500 text-blue-600' 
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
+                'whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm transition duration-200'
+              ]"
+            >
+              位置記録
+            </button>
+          </nav>
+        </div>
+
         <!-- ログアウトボタン -->
         <div class="flex justify-end mb-6">
           <button 
@@ -228,7 +363,10 @@ const getStatusColor = () => {
           </button>
         </div>
 
-        <!-- 現在のセッション状態 -->
+        <!-- セッション管理タブ -->
+        <div v-if="activeTab === 'session'" class="space-y-6">
+
+        <!-- 現在のセッション状態 -->        <!-- 現在のセッション状態 -->
         <div class="mb-8">
           <h3 class="text-lg font-bold text-gray-800 mb-4">現在の記録セッション</h3>
           <div class="bg-gray-50 rounded-lg p-4">
@@ -302,34 +440,265 @@ const getStatusColor = () => {
               class="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white font-semibold py-2 px-4 rounded-lg transition duration-200"
             >
               {{ loading ? '更新中...' : 'セッションを更新' }}
-            </button>
+            </button>          </div>
+        </div>
+        </div>
+
+        <!-- 名刺設定タブ -->
+        <div v-else-if="activeTab === 'config'" class="space-y-6">
+          <div v-if="configLoading" class="text-center">
+            <p class="text-gray-600">設定を読み込み中...</p>
+          </div>
+          
+          <div v-else class="space-y-6">
+            <!-- エラー・成功メッセージ -->
+            <div v-if="configError" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+              {{ configError }}
+            </div>
+            <div v-if="configSuccess" class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
+              {{ configSuccess }}
+            </div>
+
+            <!-- 個人情報設定 -->
+            <div class="bg-white border border-gray-200 rounded-lg p-6">
+              <h3 class="text-lg font-bold text-gray-800 mb-4">個人情報</h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">名前</label>
+                  <input 
+                    v-model="config.personalInfo.name"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="山田太郎"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">肩書き</label>
+                  <input 
+                    v-model="config.personalInfo.title"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="エンジニア"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">会社名</label>
+                  <input 
+                    v-model="config.personalInfo.company"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="株式会社サンプル"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">部署（空欄時は非表示）</label>
+                  <input 
+                    v-model="config.personalInfo.department"
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="開発部"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">メールアドレス</label>
+                  <input 
+                    v-model="config.personalInfo.email"
+                    type="email"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="yamada@example.com"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">電話番号（空欄時は非表示）</label>
+                  <input 
+                    v-model="config.personalInfo.phone"
+                    type="tel"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="090-1234-5678"
+                  />
+                </div>
+                <div class="md:col-span-2">
+                  <label class="block text-sm font-medium text-gray-700 mb-2">ウェブサイト</label>
+                  <input 
+                    v-model="config.personalInfo.website"
+                    type="url"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="https://example.com"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- SNSリンク設定 -->
+            <div class="bg-white border border-gray-200 rounded-lg p-6">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-gray-800">SNSリンク</h3>
+                <button 
+                  @click="addSocialLink"
+                  class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-1 px-3 rounded transition duration-200"
+                >
+                  + 追加
+                </button>
+              </div>
+              
+              <div v-if="config.socialLinks.length === 0" class="text-gray-500 text-center py-4">
+                SNSリンクが設定されていません
+              </div>
+              
+              <div v-else class="space-y-4">
+                <div 
+                  v-for="(link, index) in config.socialLinks" 
+                  :key="index"
+                  class="border border-gray-200 rounded-lg p-4"
+                >
+                  <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center space-x-2">
+                      <input 
+                        v-model="link.enabled"
+                        type="checkbox"
+                        class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span class="text-sm font-medium text-gray-700">有効</span>
+                    </div>
+                    <button 
+                      @click="removeSocialLink(index)"
+                      class="text-red-600 hover:text-red-800 text-sm"
+                    >
+                      削除
+                    </button>
+                  </div>
+                  
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label class="block text-xs text-gray-600 mb-1">種類</label>                      <select 
+                        v-model="link.type"
+                        @change="onSocialTypeChange(link)"
+                        class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="">選択してください</option>
+                        <option value="twitter">Twitter</option>
+                        <option value="facebook">Facebook</option>
+                        <option value="linkedin">LinkedIn</option>
+                        <option value="instagram">Instagram</option>
+                        <option value="github">GitHub</option>
+                        <option value="youtube">YouTube</option>
+                        <option value="tiktok">TikTok</option>
+                        <option value="other">その他</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-xs text-gray-600 mb-1">表示名</label>
+                      <input 
+                        v-model="link.label"
+                        type="text"
+                        class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="Twitter"
+                      />
+                    </div>
+                    <div class="md:col-span-2">
+                      <label class="block text-xs text-gray-600 mb-1">URL</label>
+                      <input 
+                        v-model="link.url"
+                        type="url"
+                        class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="https://twitter.com/username"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-xs text-gray-600 mb-1">アイコン名</label>
+                      <input 
+                        v-model="link.icon"
+                        type="text"
+                        class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="twitter（自動設定されます）"
+                        :readonly="link.type !== 'other'"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- デザイン設定 -->
+            <div class="bg-white border border-gray-200 rounded-lg p-6">
+              <h3 class="text-lg font-bold text-gray-800 mb-4">デザイン設定</h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">テーマ</label>
+                  <select 
+                    v-model="config.design.theme"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="modern">モダン</option>
+                    <option value="classic">クラシック</option>
+                    <option value="minimal">ミニマル</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">プライマリカラー</label>
+                  <input 
+                    v-model="config.design.primaryColor"
+                    type="color"
+                    class="w-full h-10 border border-gray-300 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">背景色</label>
+                  <input 
+                    v-model="config.design.backgroundColor"
+                    type="color"
+                    class="w-full h-10 border border-gray-300 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">テキストカラー</label>
+                  <input 
+                    v-model="config.design.textColor"
+                    type="color"
+                    class="w-full h-10 border border-gray-300 rounded-lg"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- 保存ボタン -->
+            <div class="flex justify-end">
+              <button 
+                @click="saveConfig"
+                :disabled="configLoading"
+                class="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold py-2 px-6 rounded-lg transition duration-200"
+              >
+                {{ configLoading ? '保存中...' : '設定を保存' }}
+              </button>
+            </div>
           </div>
         </div>
 
-        <!-- 記録された位置一覧 -->
-        <div>
-          <h3 class="text-lg font-bold text-gray-800 mb-4">記録された位置 ({{ locations.length }}件)</h3>
-          <div class="overflow-x-auto">
-            <table class="min-w-full bg-white border border-gray-200 rounded-lg">
-              <thead class="bg-gray-50">
-                <tr>
-                  <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    記録日時
-                  </th>
-                  <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    緯度
-                  </th>
-                  <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    経度
-                  </th>
-                  <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Google Maps
-                  </th>
-                  <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    操作
-                  </th>
-                </tr>
-              </thead>
+        <!-- 位置記録タブ -->
+        <div v-else-if="activeTab === 'locations'" class="space-y-6">
+          <div>
+            <h3 class="text-lg font-bold text-gray-800 mb-4">記録された位置 ({{ locations.length }}件)</h3>
+            <div class="overflow-x-auto">
+              <table class="min-w-full bg-white border border-gray-200 rounded-lg">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      記録日時
+                    </th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      緯度
+                    </th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      経度
+                    </th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Google Maps
+                    </th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      操作
+                    </th>
+                  </tr>
+                </thead>
               <tbody class="divide-y divide-gray-200">
                 <tr v-for="location in locations" :key="location.timestamp">
                   <td class="px-4 py-2 text-sm text-gray-900">
@@ -364,9 +733,9 @@ const getStatusColor = () => {
                     まだ位置情報が記録されていません
                   </td>
                 </tr>
-              </tbody>
-            </table>
+              </tbody>            </table>
           </div>
+        </div>
         </div>
       </div>
     </div>
