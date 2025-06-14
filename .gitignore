@@ -77,3 +77,6 @@ docker/volumes/
 # Temporary files
 *.tmp
 *.temp
+
+# Configuration files (generated from templates)
+config.json
