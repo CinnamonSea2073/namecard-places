@@ -1,6 +1,7 @@
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends, Header, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 import sqlite3
 import jwt
@@ -8,15 +9,18 @@ import datetime
 from typing import Optional
 import uuid
 import os
+import pytz
+import json
+import traceback
 
 app = FastAPI(title="Namecard Places API")
 
 # CORS設定
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 本番環境では具体的なドメインを指定
+    allow_origins=["http://localhost:3001", "http://localhost:3000", "http://127.0.0.1:3001", "http://127.0.0.1:3000"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -24,11 +28,28 @@ app.add_middleware(
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")  # 本番環境では変更必須
 
+# 日本標準時のタイムゾーン
+JST = pytz.timezone('Asia/Tokyo')
+
+def get_jst_now():
+    """日本標準時での現在時刻を取得"""
+    return datetime.datetime.now(JST)
+
+def get_jst_timestamp(dt=None):
+    """日本標準時でのタイムスタンプを取得"""
+    if dt is None:
+        dt = get_jst_now()
+    elif dt.tzinfo is None:
+        # ナイーブなdatetimeの場合、UTCとして扱って日本時間に変換
+        dt = pytz.UTC.localize(dt).astimezone(JST)
+    return dt.isoformat()
+
 # データモデル
 class LocationRecord(BaseModel):
     latitude: float
     longitude: float
     timestamp: Optional[str] = None
+    session_id: Optional[str] = None
     
     @field_validator('latitude')
     @classmethod
@@ -114,22 +135,40 @@ def get_recording_session():
             return {"enabled": False, "expires_at": None, "description": None}
     
     conn.close()
-    
-    # resultが空やNoneでないかを確認
+      # resultが空やNoneでないかを確認
     if not result or len(result) < 3:
         return {"enabled": False, "expires_at": None, "description": None}
     
     enabled, expires_at, description = result
-    
-    # 期限切れチェック
-    if expires_at and datetime.datetime.fromisoformat(expires_at) < datetime.datetime.utcnow():
-        # 期限切れの場合は無効化
-        conn = sqlite3.connect('namecard_places.db')
-        cursor = conn.cursor()
-        cursor.execute('UPDATE recording_sessions SET enabled = 0 WHERE id = 1')
-        conn.commit()
-        conn.close()
-        return {"enabled": False, "expires_at": expires_at, "description": description}
+      # 期限切れチェック
+    if expires_at:
+        try:
+            # ISO形式の文字列をパース（簡単な形式のみサポート）
+            expires_str = expires_at.replace('Z', '+00:00').replace('T', ' ')
+            if '+' in expires_str:
+                expires_str = expires_str.split('+')[0]
+            
+            # 秒が含まれているかチェック
+            if len(expires_str) >= 19 and expires_str[16] == ':':
+                # 秒が含まれている場合（YYYY-MM-DD HH:MM:SS）
+                expires_dt = datetime.datetime.strptime(expires_str[:19], '%Y-%m-%d %H:%M:%S')
+            else:
+                # 秒が含まれていない場合（YYYY-MM-DD HH:MM）
+                expires_dt = datetime.datetime.strptime(expires_str[:16], '%Y-%m-%d %H:%M')
+            
+            expires_dt = JST.localize(expires_dt)
+            
+            if expires_dt < get_jst_now():
+                # 期限切れの場合は無効化
+                conn = sqlite3.connect('namecard_places.db')
+                cursor = conn.cursor()
+                cursor.execute('UPDATE recording_sessions SET enabled = 0 WHERE id = 1')
+                conn.commit()
+                conn.close()
+                return {"enabled": False, "expires_at": expires_at, "description": description}
+        except Exception as e:
+            print(f"Date parsing error: {e}")
+            # パースエラーの場合は期限切れとして扱わない
     
     return {"enabled": bool(enabled), "expires_at": expires_at, "description": description}
 
@@ -143,11 +182,10 @@ def verify_admin_password(password: str):
 
 @app.post("/api/admin/login")
 async def admin_login(login_data: AdminLogin):
-    verify_admin_password(login_data.password)
-    # 簡易JWTトークン生成（管理者用）
+    verify_admin_password(login_data.password)    # 簡易JWTトークン生成（管理者用）
     payload = {
         "admin": True,
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+        "exp": get_jst_now() + datetime.timedelta(hours=24)
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
     return {"token": token, "message": "Admin login successful"}
@@ -195,7 +233,7 @@ async def get_all_locations_admin(admin_password: str):
             "id": loc[0],
             "latitude": loc[1],
             "longitude": loc[2],
-            "timestamp": loc[3],
+            "timestamp": get_jst_timestamp(datetime.datetime.fromisoformat(loc[3]) if loc[3] else None),
             "session_id": loc[4],
             "user_agent": loc[5],
             "ip_address": loc[6]
@@ -255,49 +293,123 @@ async def get_recording_status():
 
 # 位置情報記録（セッション有効時のみ）
 @app.post("/api/record-location")
-async def record_location(location: LocationRecord, x_session_id: str = Header(None)):
-    session = get_recording_session()
-    
-    if not session["enabled"]:
-        raise HTTPException(status_code=403, detail="Recording is currently disabled")
-    
-    # 位置情報を保存
-    conn = sqlite3.connect('namecard_places.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO locations (latitude, longitude, session_id, user_agent, ip_address)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (location.latitude, location.longitude, x_session_id, "browser", "unknown"))
-    
-    location_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    
-    return {"message": "Location recorded successfully", "id": location_id}
+async def record_location(location: LocationRecord):
+    """位置情報を記録"""
+    try:
+        print(f"Received location record request: {location}")
+          # 記録が有効かチェック
+        session = get_recording_session()
+        if not session["enabled"]:  # enabled
+            raise HTTPException(status_code=403, detail="Recording is currently disabled")        # セッションの期限をチェック
+        if session["expires_at"]:  # expires_at exists
+            try:
+                # ISO形式の文字列をパース（簡単な形式のみサポート）
+                expires_str = session["expires_at"].replace('Z', '+00:00').replace('T', ' ')
+                if '+' in expires_str:
+                    expires_str = expires_str.split('+')[0]
+                
+                # 秒が含まれているかチェック
+                if len(expires_str) >= 19 and expires_str[16] == ':':
+                    # 秒が含まれている場合（YYYY-MM-DD HH:MM:SS）
+                    expires_dt = datetime.datetime.strptime(expires_str[:19], '%Y-%m-%d %H:%M:%S')
+                else:
+                    # 秒が含まれていない場合（YYYY-MM-DD HH:MM）
+                    expires_dt = datetime.datetime.strptime(expires_str[:16], '%Y-%m-%d %H:%M')
+                
+                expires_dt = JST.localize(expires_dt)
+                
+                if datetime.datetime.now(JST) > expires_dt:
+                    raise HTTPException(status_code=403, detail="Recording session has expired")
+            except Exception as e:
+                print(f"Date parsing error in record_location: {e}")
+                # パースエラーの場合は期限チェックをスキップ
+        
+        # 既存の記録をチェック（1人1記録の制限）
+        conn = sqlite3.connect('namecard_places.db')
+        cursor = conn.cursor()
+        
+        if location.session_id:
+            cursor.execute('''
+                SELECT COUNT(*) FROM locations WHERE session_id = ?
+            ''', (location.session_id,))
+            
+            if cursor.fetchone()[0] > 0:
+                conn.close()
+                raise HTTPException(status_code=409, detail="既に位置情報を記録済みです")
+        
+        # JSTタイムスタンプを生成
+        jst_now = datetime.datetime.now(JST)
+          # 位置情報を記録
+        cursor.execute('''
+            INSERT INTO locations (latitude, longitude, timestamp, session_id, user_agent, ip_address)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (location.latitude, location.longitude, jst_now.isoformat(), location.session_id, None, None))
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"Successfully recorded location: lat={location.latitude}, lon={location.longitude}")
+        return {"message": "Location recorded successfully"}
+        
+    except HTTPException as e:
+        print(f"HTTP Exception in record_location: {e}")
+        raise e
+    except Exception as e:
+        print(f"Error in record_location: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to record location: {str(e)}")
 
 # 位置情報取得（公開用）
 @app.get("/api/locations")
 async def get_locations():
-    conn = sqlite3.connect('namecard_places.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT id, latitude, longitude, timestamp, session_id FROM locations
-        ORDER BY timestamp DESC
-        LIMIT 100
-    ''')
-    locations = cursor.fetchall()
-    conn.close()
-    
-    return [
-        {
-            "id": loc[0],
-            "latitude": loc[1],
-            "longitude": loc[2],
-            "timestamp": loc[3],
-            "session_id": loc[4]
-        }
-        for loc in locations
-    ]
+    """位置情報の一覧を取得"""
+    try:
+        conn = sqlite3.connect('namecard_places.db')
+        cursor = conn.cursor()
+        
+        # まずテーブルが存在するかチェック
+        cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='locations'
+        """)
+        
+        if not cursor.fetchone():
+            print("Locations table does not exist")
+            conn.close()
+            return []
+        
+        cursor.execute('''
+            SELECT latitude, longitude, timestamp, session_id 
+            FROM locations 
+            ORDER BY timestamp DESC
+        ''')
+        
+        locations = []
+        for row in cursor.fetchall():
+            lat, lon, timestamp, session_id = row
+            try:
+                # JSTタイムゾーンでフォーマット
+                dt = datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                jst_dt = dt.astimezone(JST)
+                formatted_timestamp = jst_dt.isoformat()
+            except Exception as e:
+                print(f"Timestamp parsing error: {e}")
+                formatted_timestamp = timestamp
+            
+            locations.append({
+                "latitude": lat,
+                "longitude": lon,
+                "timestamp": formatted_timestamp,
+                "session_id": session_id or ""
+            })
+        
+        conn.close()
+        return locations
+        
+    except Exception as e:
+        print(f"Error in get_locations: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 # 位置情報削除（ユーザー自身の記録のみ）
 @app.delete("/api/locations/{location_id}")
@@ -337,4 +449,4 @@ async def get_card_info():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

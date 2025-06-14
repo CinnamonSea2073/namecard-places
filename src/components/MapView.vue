@@ -50,6 +50,12 @@ const getUserSessionId = () => {
 
 // グローバル関数として削除機能を追加
 window.deleteLocation = async (locationId) => {
+  // locationIdの有効性をチェック
+  if (!locationId || locationId === 'undefined' || locationId === 'null') {
+    alert('削除対象のIDが無効です')
+    return
+  }
+  
   if (!confirm('この記録を削除しますか？')) return
   
   try {
@@ -72,10 +78,36 @@ window.deleteLocation = async (locationId) => {
     // ポップアップを閉じる
     popup.value.setPosition(undefined)
     
-    alert('記録を削除しました')
-  } catch (err) {
+    alert('記録を削除しました')  } catch (err) {
     console.error('削除エラー:', err)
-    alert('削除に失敗しました: ' + (err.response?.data?.detail || err.message))
+    
+    // エラーメッセージを適切に抽出
+    let errorMessage = '削除に失敗しました'
+    
+    if (err.response) {
+      // サーバーからのレスポンスエラー
+      if (err.response.data) {
+        if (typeof err.response.data === 'string') {
+          errorMessage += ': ' + err.response.data
+        } else if (err.response.data.detail) {
+          errorMessage += ': ' + err.response.data.detail
+        } else if (err.response.data.message) {
+          errorMessage += ': ' + err.response.data.message
+        } else {
+          errorMessage += ': ' + JSON.stringify(err.response.data)
+        }
+      } else {
+        errorMessage += ': サーバーエラー (ステータス: ' + err.response.status + ')'
+      }
+    } else if (err.message) {
+      // ネットワークエラーなど
+      errorMessage += ': ' + err.message
+    } else {
+      // その他のエラー
+      errorMessage += ': 不明なエラーが発生しました'
+    }
+    
+    alert(errorMessage)
   }
 }
 
@@ -108,6 +140,32 @@ const checkRecordingStatus = async () => {
   }
 }
 
+const checkExistingUserRecord = async () => {
+  try {
+    // 既存の位置情報を取得
+    const response = await axios.get(`${API_BASE}/api/locations`)
+    const userSessionId = getUserSessionId()
+    
+    // レスポンスが配列であることを確認
+    if (!Array.isArray(response.data)) {
+      console.error('Expected array but got:', typeof response.data, response.data)
+      return false
+    }
+    
+    // 現在のユーザーの記録があるかチェック
+    const existingRecord = response.data.find(loc => loc.session_id === userSessionId)
+    
+    if (existingRecord) {
+      error.value = '既に位置情報を記録済みです。一度だけ記録できます。'
+      return true
+    }
+    return false
+  } catch (err) {
+    console.error('既存記録チェックエラー:', err)
+    return false
+  }
+}
+
 const initMap = () => {
   const vectorSource = new VectorSource()
   const vectorLayer = new VectorLayer({
@@ -127,9 +185,13 @@ const initMap = () => {
             width: 3,
             lineDash: isUserRecord ? [5, 5] : undefined
           })
-        }),
-        text: timestamp ? new Text({
-          text: new Date(timestamp).toLocaleDateString('ja-JP'),
+        }),        text: timestamp ? new Text({
+          text: new Intl.DateTimeFormat('ja-JP', {
+            timeZone: 'Asia/Tokyo',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+          }).format(new Date(timestamp)),
           offsetY: -20,
           font: 'bold 12px sans-serif',
           fill: new Fill({ color: '#1f2937' }),
@@ -172,17 +234,26 @@ const initMap = () => {
       const timestamp = feature.get('timestamp')
       const locationId = feature.get('locationId')
       const isUserRecord = feature.get('isUserRecord')
-      
-      if (timestamp) {
+        if (timestamp) {
         const date = new Date(timestamp)
-        const deleteButton = isUserRecord 
+        // 日本時間で表示
+        const jstDate = new Intl.DateTimeFormat('ja-JP', {
+          timeZone: 'Asia/Tokyo',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        }).format(date)
+          const deleteButton = (isUserRecord && locationId && locationId !== 'undefined') 
           ? `<button onclick="deleteLocation(${locationId})" class="mt-2 bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm">削除</button>`
           : ''
         
         popupRef.value.innerHTML = `
           <div class="bg-white p-3 rounded-lg shadow-lg border">
-            <div class="font-semibold text-gray-800">記録日時</div>
-            <div class="text-sm text-gray-600">${date.toLocaleString('ja-JP')}</div>
+            <div class="font-semibold text-gray-800">記録日時 (JST)</div>
+            <div class="text-sm text-gray-600">${jstDate}</div>
             ${isUserRecord ? '<div class="text-xs text-green-600 mt-1">あなたの記録</div>' : ''}
             ${deleteButton}
           </div>
@@ -296,13 +367,25 @@ const useGPSLocation = () => {
 const confirmLocation = async () => {
   if (!currentLocation.value) return
 
+  // 既に記録があるかチェック
+  const hasExistingRecord = await checkExistingUserRecord()
+  if (hasExistingRecord) {
+    isRecording.value = false
+    return
+  }
+
   isRecording.value = true
   error.value = null
 
-  try {
-    const response = await axios.post(`${API_BASE}/api/record-location`, currentLocation.value, {
+  try {    // リクエストボディにsession_idを含める
+    const locationData = {
+      ...currentLocation.value,
+      session_id: getUserSessionId()
+    }
+    
+    const response = await axios.post(`${API_BASE}/api/record-location`, locationData, {
       headers: {
-        'X-Session-Id': getUserSessionId()
+        'Content-Type': 'application/json'
       }
     })
 
@@ -317,18 +400,18 @@ const confirmLocation = async () => {
       ])),
       timestamp: new Date().toISOString(),
       locationId: response.data.id,
-      isUserRecord: true
-    })
+      isUserRecord: true    })
     vectorSource.addFeature(feature)
-
+    
     success.value = true
     showConfirmDialog.value = false
     
     setTimeout(() => {
       success.value = false
-      if (!props.viewOnly) {
-        emit('back-to-card')
-      }
+      // 自動遷移を無効化（ユーザーが地図に残り続けられるように）
+      // if (!props.viewOnly) {
+      //   emit('back-to-card')
+      // }
     }, 2000)
 
   } catch (err) {
@@ -350,6 +433,76 @@ const closeInstructions = () => {
 
 const goBack = () => {
   emit('back-to-card')
+}
+
+// コンポーネントメソッドとしてのdeleteLocation（テスト用）
+const deleteLocation = async (locationId) => {
+  // locationIdの有効性をチェック
+  if (!locationId || locationId === 'undefined' || locationId === 'null') {
+    alert('削除対象のIDが無効です')
+    return
+  }
+  
+  if (!confirm('この記録を削除しますか？')) return
+  
+  try {
+    await axios.delete(`${API_BASE}/api/locations/${locationId}`, {
+      headers: {
+        'X-Session-Id': getUserSessionId()
+      }
+    })
+    
+    // 地図から該当のピンを削除
+    if (map.value && map.value.getLayers) {
+      const vectorLayer = map.value.getLayers().getArray()[1]
+      if (vectorLayer && vectorLayer.getSource) {
+        const vectorSource = vectorLayer.getSource()
+        const features = vectorSource.getFeatures()
+        
+        const featureToRemove = features.find(f => f.get('locationId') === locationId)
+        if (featureToRemove) {
+          vectorSource.removeFeature(featureToRemove)
+        }
+      }
+    }
+    
+    // ポップアップを閉じる
+    if (popup.value && popup.value.setPosition) {
+      popup.value.setPosition(undefined)
+    }
+    
+    alert('記録を削除しました')
+  } catch (err) {
+    console.error('削除エラー:', err)
+    
+    // エラーメッセージを適切に抽出
+    let errorMessage = '削除に失敗しました'
+    
+    if (err.response) {
+      // サーバーからのレスポンスエラー
+      if (err.response.data) {
+        if (typeof err.response.data === 'string') {
+          errorMessage += ': ' + err.response.data
+        } else if (err.response.data.detail) {
+          errorMessage += ': ' + err.response.data.detail
+        } else if (err.response.data.message) {
+          errorMessage += ': ' + err.response.data.message
+        } else {
+          errorMessage += ': ' + JSON.stringify(err.response.data)
+        }
+      } else {
+        errorMessage += ': サーバーエラー (ステータス: ' + err.response.status + ')'
+      }
+    } else if (err.message) {
+      // ネットワークエラーなど
+      errorMessage += ': ' + err.message
+    } else {
+      // その他のエラー
+      errorMessage += ': 不明なエラーが発生しました'
+    }
+    
+    alert(errorMessage)
+  }
 }
 </script>
 
@@ -522,9 +675,8 @@ const goBack = () => {
             @click="confirmLocation"
             :disabled="isRecording"
             class="flex-1 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-semibold py-2 px-4 rounded-lg transition duration-200"
-          >
-            <span v-if="isRecording">記録中...</span>
-            <span v-else">記録する</span>
+          >            <span v-if="isRecording">記録中...</span>
+            <span v-else>記録する</span>
           </button>
         </div>
       </div>
