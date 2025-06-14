@@ -531,9 +531,9 @@ const deleteLocation = async (locationId) => {
         <h3 class="text-lg font-bold text-gray-800 mb-4">
           <svg class="w-6 h-6 inline mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-          </svg>
-          位置記録について
-        </h3>        <div class="text-gray-600 mb-6">
+          </svg>          位置記録について
+        </h3>
+        <div class="text-gray-600 mb-6">
           <p class="mb-3">この機能では、名刺を交換した場所を地図上に記録できます。</p>
           <div class="bg-blue-50 p-3 rounded-lg mb-3">
             <h4 class="font-semibold text-blue-800 mb-2">記録方法：</h4>

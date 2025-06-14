@@ -260,25 +260,6 @@ async def delete_location_admin(location_id: int, admin_password: str):
     
     return {"message": "Location deleted successfully"}
 
-# 管理者による位置情報削除
-@app.delete("/api/admin/locations/{location_id}")
-async def admin_delete_location(location_id: int, admin_password: str):
-    verify_admin_password(admin_password)
-    
-    conn = sqlite3.connect('namecard_places.db')
-    cursor = conn.cursor()
-    
-    cursor.execute('DELETE FROM locations WHERE id = ?', (location_id,))
-    
-    if cursor.rowcount == 0:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Location not found")
-    
-    conn.commit()
-    conn.close()
-    
-    return {"message": "Location deleted successfully"}
-
 # ===== 公開API =====
 
 # 記録セッション状態確認（公開）
