@@ -8,7 +8,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "tunnel:setup": "bash scripts/setup-cloudflare-tunnel.sh",
+    "tunnel:start": "bash scripts/start-tunnel.sh",
+    "tunnel:setup:win": "scripts\\setup-cloudflare-tunnel.bat",
+    "tunnel:start:win": "scripts\\start-tunnel.bat"
   },
   "dependencies": {
     "axios": "^1.9.0",

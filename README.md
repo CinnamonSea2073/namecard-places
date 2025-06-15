@@ -62,6 +62,86 @@ docker-compose logs -f
 docker-compose down
 ```
 
+### Cloudflareトンネルでの公開
+
+Cloudflareトンネルを使用してサイトを安全に公開できます。
+
+#### 前提条件
+- Cloudflareアカウント
+- 管理ドメイン（Cloudflareで管理されている必要があります）
+- cloudflaredのインストール
+
+#### セットアップ手順
+
+1. **cloudflaredのインストール**
+   ```bash
+   # Windows
+   winget install --id Cloudflare.cloudflared
+   
+   # macOS
+   brew install cloudflare/cloudflare/cloudflared
+   
+   # Linux
+   curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+   sudo dpkg -i cloudflared.deb
+   ```
+
+2. **自動セットアップ（推奨）**
+   ```bash
+   # Linux/macOS
+   chmod +x scripts/setup-cloudflare-tunnel.sh
+   ./scripts/setup-cloudflare-tunnel.sh
+   
+   # Windows
+   scripts\setup-cloudflare-tunnel.bat
+   ```
+
+3. **手動セットアップ**
+   ```bash
+   # Cloudflareにログイン
+   cloudflared tunnel login
+   
+   # トンネル作成
+   cloudflared tunnel create namecard-places-tunnel
+   
+   # DNSレコード作成
+   cloudflared tunnel route dns namecard-places-tunnel namecard-places.your-domain.com
+   cloudflared tunnel route dns namecard-places-tunnel api.namecard-places.your-domain.com
+   
+   # 設定ファイル編集
+   # cloudflare-tunnel.yml で your-domain.com を実際のドメインに変更
+   ```
+
+4. **開発サーバーの起動**
+   ```bash
+   # フロントエンド
+   npm run dev
+   
+   # バックエンド
+   python backend/main.py
+   ```
+
+5. **トンネルの開始**
+   ```bash
+   # Linux/macOS
+   ./scripts/start-tunnel.sh
+   
+   # Windows
+   scripts\start-tunnel.bat
+   
+   # または手動で
+   cloudflared tunnel --config cloudflare-tunnel.yml run namecard-places-tunnel
+   ```
+
+#### アクセス確認
+- **フロントエンド**: `https://namecard-places.your-domain.com`
+- **API**: `https://api.namecard-places.your-domain.com`
+
+#### 注意事項
+- ドメインは事前にCloudflareで管理されている必要があります
+- トンネル起動前に開発サーバー（フロントエンド・バックエンド）を起動してください
+- 本番運用の場合は、適切なSSL証明書とセキュリティ設定を行ってください
+
 ## 管理者機能
 
 ### 管理者パネルへのアクセス

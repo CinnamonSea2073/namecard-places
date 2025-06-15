@@ -1,0 +1,42 @@
+# Docker用Cloudflare Tunnel設定テンプレート
+# このファイルをコピーしてcloudflare-tunnel.ymlとして使用してください
+# セットアップ後に自動生成されるトンネルIDと認証情報を設定する必要があります
+
+tunnel: <TUNNEL_ID>
+credentials-file: /etc/cloudflared/credentials/<TUNNEL_ID>.json
+
+# Docker内部からのサービス接続設定
+ingress:
+  # フロントエンド（Vue.js）- Docker内部ネットワーク経由
+  - hostname: namecard-places.your-domain.com
+    service: http://frontend:3000
+  # バックエンド（FastAPI）- Docker内部ネットワーク経由
+  - hostname: api.namecard-places.your-domain.com
+    service: http://backend:8000
+  # すべての他のトラフィックのデフォルト（必須）
+  - service: http_status:404
+
+# パフォーマンス最適化設定
+originRequest:
+  connectTimeout: 30s
+  tlsTimeout: 30s
+  tcpKeepAlive: 30s
+  noHappyEyeballs: false
+  keepAliveConnections: 100
+  keepAliveTimeout: 1m30s
+  httpHostHeader: ""
+  originServerName: ""
+  caPool: ""
+  noTLSVerify: false
+  disableChunkedEncoding: false
+  bastionMode: false
+  proxyConnectionTimeout: 30s
+  proxyTLSTimeout: 30s
+  proxyType: ""
+
+# ログ設定
+loglevel: info
+transport-loglevel: warn
+
+# メトリクス設定（オプション）
+metrics: 0.0.0.0:8081

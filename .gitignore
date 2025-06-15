@@ -23,6 +23,12 @@ dist-ssr
 *.sln
 *.sw?
 
+# Cloudflare Tunnel
+.cloudflared/
+*.json
+cloudflare-tunnel.yml
+!config.example.json
+
 # Python
 __pycache__/
 *.py[cod]

@@ -36,6 +36,9 @@ app.add_middleware(
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")  # 本番環境では変更必須
 
+# データベースパス
+DB_PATH = "namecard_places.db"
+
 # 日本標準時のタイムゾーン
 JST = pytz.timezone('Asia/Tokyo')
 
@@ -101,7 +104,8 @@ def load_config():
         if os.path.exists(CONFIG_FILE):
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        else:            # デフォルト設定を返す
+        else:
+            # デフォルト設定を返す
             return {
                 "personalInfo": {
                     "name": "あなたの名前",
@@ -117,14 +121,12 @@ def load_config():
                     "primaryColor": "#3B82F6",
                     "accentColor": "#10B981",
                     "backgroundColor": "#F8FAFC",
-                    "showQRCode": False,
-                    "theme": "modern",
-                    "profileImage": "",
-                    "backgroundImage": ""
+                    "showQRCode": False
                 }
             }
     except Exception as e:
-        print(f"Error loading config: {e}")        # エラーの場合はデフォルト設定を返す
+        print(f"Error loading config: {e}")
+        # エラーの場合はデフォルト設定を返す
         return {
             "personalInfo": {
                 "name": "あなたの名前",
@@ -140,10 +142,7 @@ def load_config():
                 "primaryColor": "#3B82F6",
                 "accentColor": "#10B981",
                 "backgroundColor": "#F8FAFC",
-                "showQRCode": False,
-                "theme": "modern",
-                "profileImage": "",
-                "backgroundImage": ""
+                "showQRCode": False
             }
         }
 
@@ -159,7 +158,7 @@ def save_config(config_data):
 
 # データベース初期化
 def init_db():
-    conn = sqlite3.connect('namecard_places.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS locations (
@@ -193,7 +192,7 @@ init_db()
 
 # 記録セッション状態を取得
 def get_recording_session():
-    conn = sqlite3.connect('namecard_places.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
         SELECT enabled, expires_at, description FROM recording_sessions WHERE id = 1
@@ -231,8 +230,7 @@ def get_recording_session():
             expires_str = expires_at.replace('Z', '+00:00').replace('T', ' ')
             if '+' in expires_str:
                 expires_str = expires_str.split('+')[0]
-            
-            # 秒が含まれているかチェック
+              # 秒が含まれているかチェック
             if len(expires_str) >= 19 and expires_str[16] == ':':
                 # 秒が含まれている場合（YYYY-MM-DD HH:MM:SS）
                 expires_dt = datetime.datetime.strptime(expires_str[:19], '%Y-%m-%d %H:%M:%S')
@@ -244,7 +242,7 @@ def get_recording_session():
             
             if expires_dt < get_jst_now():
                 # 期限切れの場合は無効化
-                conn = sqlite3.connect('namecard_places.db')
+                conn = sqlite3.connect(DB_PATH)
                 cursor = conn.cursor()
                 cursor.execute('UPDATE recording_sessions SET enabled = 0 WHERE id = 1')
                 conn.commit()
@@ -261,6 +259,13 @@ def verify_admin_password(password: str):
     if password != ADMIN_PASSWORD:
         raise HTTPException(status_code=401, detail="Invalid admin password")
     return True
+
+# ===== ヘルスチェックAPI =====
+
+@app.get("/api/health")
+async def health_check():
+    """APIサーバーのヘルスチェック"""
+    return {"status": "healthy", "timestamp": get_jst_timestamp()}
 
 # ===== 管理者API =====
 
@@ -282,7 +287,7 @@ async def enable_recording(session: RecordingSession, admin_password: str):
     if session.expires_at:
         expires_at = session.expires_at
     
-    conn = sqlite3.connect('namecard_places.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
         UPDATE recording_sessions 
@@ -302,7 +307,7 @@ async def get_session_status(admin_password: str):
 @app.get("/api/admin/locations")
 async def get_all_locations_admin(admin_password: str):
     verify_admin_password(admin_password)
-    conn = sqlite3.connect('namecard_places.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
         SELECT id, latitude, longitude, timestamp, session_id, user_agent, ip_address 
@@ -330,7 +335,7 @@ async def get_all_locations_admin(admin_password: str):
 async def delete_location_admin(location_id: int, admin_password: str):
     verify_admin_password(admin_password)
     
-    conn = sqlite3.connect('namecard_places.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     cursor.execute('DELETE FROM locations WHERE id = ?', (location_id,))
@@ -411,9 +416,8 @@ async def record_location(location: LocationRecord):
             except Exception as e:
                 print(f"Date parsing error in record_location: {e}")
                 # パースエラーの場合は期限チェックをスキップ
-        
-        # 既存の記録をチェック（1人1記録の制限）
-        conn = sqlite3.connect('namecard_places.db')
+          # 既存の記録をチェック（1人1記録の制限）
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
         if location.session_id:
@@ -452,7 +456,7 @@ async def record_location(location: LocationRecord):
 async def get_locations():
     """位置情報の一覧を取得"""
     try:
-        conn = sqlite3.connect('namecard_places.db')
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
         # まずテーブルが存在するかチェック
@@ -502,10 +506,9 @@ async def get_locations():
 # 位置情報削除（ユーザー自身の記録のみ）
 @app.delete("/api/locations/{location_id}")
 async def delete_location(location_id: int, x_session_id: str = Header(None)):
-    if not x_session_id:
-        raise HTTPException(status_code=400, detail="Session ID is required")
+    if not x_session_id:        raise HTTPException(status_code=400, detail="Session ID is required")
     
-    conn = sqlite3.connect('namecard_places.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     # セッションIDが一致する記録のみ削除

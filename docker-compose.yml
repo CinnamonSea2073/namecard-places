@@ -14,6 +14,7 @@ services:
     volumes:
       - ./src:/app/src
       - ./public:/app/public
+
   backend:
     build:
       context: ./backend
@@ -26,6 +27,43 @@ services:
     volumes:
       - ./backend:/app
       - namecard_data:/app/data
+  cloudflare-tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: |
+      sh -c "
+      if [ -f /etc/cloudflared/config.yml ] && [ -d /etc/cloudflared/credentials ]; then
+        echo 'Cloudflareトンネル設定が見つかりました。トンネルを開始します...'
+        tunnel --config /etc/cloudflared/config.yml run namecard-places-tunnel
+      else
+        echo 'Cloudflareトンネルの設定が不完全です。セットアップを完了してからdocker-composeを再起動してください。'
+        echo '詳細は README.md の「Cloudflareトンネルの利用」セクションを参照してください。'
+        sleep 30
+        exit 1
+      fi
+      "
+    volumes:
+      - ./cloudflare-tunnel.yml:/etc/cloudflared/config.yml:ro
+      - ~/.cloudflared:/etc/cloudflared/credentials:ro
+    depends_on:
+      - frontend
+      - backend
+    environment:
+      - TUNNEL_METRICS=0.0.0.0:8081
+    ports:
+      - "8081:8081"  # メトリクスポート（オプション）
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8081/metrics || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 volumes:
   namecard_data:
+
+networks:
+  default:
+    driver: bridge
