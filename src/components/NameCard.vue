@@ -22,6 +22,26 @@ const personalInfo = computed(() => cardInfo.value?.personalInfo || {})
 const socialLinks = computed(() => cardInfo.value?.socialLinks || [])
 const design = computed(() => cardInfo.value?.design || {})
 
+// 背景スタイルを計算する関数
+const headerBackgroundStyle = computed(() => {
+  const baseGradient = `linear-gradient(135deg, ${design.value.primaryColor || '#3B82F6'}aa 0%, ${design.value.primaryColor || '#3B82F6'}bb 100%)`
+  
+  if (design.value.backgroundImage) {
+    return {
+      background: `${baseGradient}, url('${design.value.backgroundImage}')`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundBlendMode: 'overlay'
+    }
+  } else {
+    return {
+      background: `linear-gradient(135deg, ${design.value.primaryColor || '#3B82F6'} 0%, ${design.value.primaryColor || '#3B82F6'}dd 100())`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center'
+    }
+  }
+})
+
 // ソーシャルアイコンのマッピング
 const getSocialIcon = (type) => {
   const icons = {
@@ -172,13 +192,7 @@ const openSocialLink = (url) => {
       <!-- ヘッダー部分 -->
       <div 
         class="px-8 py-6 text-center relative overflow-hidden"
-        :style="{
-          background: design.backgroundImage ? 
-            `linear-gradient(135deg, ${design.primaryColor || '#3B82F6'}aa 0%, ${design.primaryColor || '#3B82F6'}bb 100%), url('${design.backgroundImage}')` :
-            `linear-gradient(135deg, ${design.primaryColor || '#3B82F6'} 0%, ${design.primaryColor || '#3B82F6'}dd 100%)`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center'
-        }"
+        :style="headerBackgroundStyle"
       >
         <!-- 装飾的な背景要素 -->
         <div class="absolute top-0 left-0 w-full h-full opacity-10">

@@ -299,6 +299,54 @@ const getStatusColor = () => {
   
   return 'text-green-600'
 }
+
+// 画像アップロード関連の関数
+const handleImageUpload = async (imageType, event) => {
+  const file = event.target.files[0]
+  if (!file) return
+
+  // ファイルサイズチェック（5MB制限）
+  if (file.size > 5 * 1024 * 1024) {
+    alert('ファイルサイズは5MB以下にしてください')
+    return
+  }
+
+  // ファイル形式チェック
+  if (!file.type.startsWith('image/')) {
+    alert('画像ファイルを選択してください')
+    return
+  }
+
+  try {
+    // Base64エンコード
+    const base64 = await fileToBase64(file)
+    
+    // 設定に保存
+    config.value.design[imageType] = base64
+    
+    // プレビューを更新するために強制的に名刺画面を更新
+    emit('config-updated')
+    
+  } catch (error) {
+    console.error('画像アップロードエラー:', error)
+    alert('画像のアップロードに失敗しました')
+  }
+}
+
+const fileToBase64 = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+const handleImageError = (imageType) => {
+  console.error(`画像の読み込みに失敗しました: ${imageType}`)
+  // エラー時は画像URLをクリア
+  config.value.design[imageType] = ''
+}
 </script>
 
 <template>
@@ -790,78 +838,247 @@ const getStatusColor = () => {
                     placeholder="#1F2937"
                   />
                 </div>
-              </div>
-
-              <!-- プレビュー -->
+              </div>              <!-- プレビュー -->
               <div class="bg-gray-50 rounded-lg p-4">
-                <h4 class="text-sm font-medium text-gray-700 mb-3">プレビュー</h4>
+                <h4 class="text-sm font-medium text-gray-700 mb-3">名刺プレビュー</h4>
                 <div 
-                  class="w-full max-w-xs mx-auto rounded-lg p-4 text-center"
+                  class="w-full max-w-xs mx-auto rounded-lg overflow-hidden shadow-lg relative"
                   :style="{
                     backgroundColor: config.design.backgroundColor,
                     color: config.design.textColor,
                     border: `2px solid ${config.design.primaryColor}20`
                   }"
                 >
+                  <!-- ヘッダー部分（背景画像付き） -->
                   <div 
-                    class="text-white text-lg font-bold py-2 px-4 rounded mb-3"
-                    :style="{ backgroundColor: config.design.primaryColor }"
-                    :class="{
-                      'font-light': config.design.theme === 'minimal',
-                      'font-serif': config.design.theme === 'classic',
-                      'tracking-wide': config.design.theme === 'creative'
+                    class="px-4 py-6 text-center relative"
+                    :style="{
+                      background: config.design.backgroundImage ? 
+                        `linear-gradient(135deg, ${config.design.primaryColor}aa 0%, ${config.design.primaryColor}bb 100%), url('${config.design.backgroundImage}')` :
+                        `linear-gradient(135deg, ${config.design.primaryColor} 0%, ${config.design.primaryColor}dd 100%)`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center'
                     }"
                   >
-                    {{ config.personalInfo.name || '山田 太郎' }}
+                    <!-- プロフィール画像 -->
+                    <div v-if="config.design.profileImage" class="mb-3">
+                      <img 
+                        :src="config.design.profileImage" 
+                        :alt="`${config.personalInfo.name || '山田 太郎'}のプロフィール画像`"
+                        class="w-16 h-16 rounded-full mx-auto object-cover border-2 border-white"
+                        @error="handleImageError('profileImage')"
+                      >
+                    </div>
+                    
+                    <div class="relative z-10">
+                      <div 
+                        class="text-white text-lg font-bold mb-2"
+                        :class="{
+                          'font-light': config.design.theme === 'minimal',
+                          'font-serif': config.design.theme === 'classic',
+                          'tracking-wide': config.design.theme === 'creative'
+                        }"
+                      >
+                        {{ config.personalInfo.name || '山田 太郎' }}
+                      </div>
+                      <div class="text-white text-sm opacity-90">
+                        {{ config.personalInfo.title || 'ソフトウェアエンジニア' }}
+                      </div>
+                    </div>
                   </div>
-                  <div class="text-sm opacity-75">
-                    {{ config.personalInfo.title || 'ソフトウェアエンジニア' }}
+
+                  <!-- 会社情報 -->
+                  <div class="px-4 py-3 border-b border-gray-100">
+                    <div class="flex items-center text-sm">
+                      <!-- ロゴ画像またはアイコン -->
+                      <div class="mr-2">
+                        <img 
+                          v-if="config.design.logoImage"
+                          :src="config.design.logoImage" 
+                          :alt="`${config.personalInfo.company || '株式会社サンプル'}のロゴ`"
+                          class="w-5 h-5 object-contain"
+                          @error="handleImageError('logoImage')"
+                        >
+                        <svg v-else class="w-4 h-4 opacity-60" fill="currentColor" viewBox="0 0 20 20">
+                          <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a1 1 0 110 2h-3a1 1 0 01-1-1v-2a1 1 0 00-1-1H9a1 1 0 00-1 1v2a1 1 0 01-1 1H4a1 1 0 110-2V4zm3 1h2v2H7V5zm2 4H7v2h2V9zm2-4h2v2h-2V5zm2 4h-2v2h2V9z" clip-rule="evenodd"/>
+                        </svg>
+                      </div>
+                      <span>{{ config.personalInfo.company || '株式会社サンプル' }}</span>
+                    </div>
                   </div>
-                  <div class="text-xs opacity-60 mt-2">
-                    {{ config.personalInfo.company || '株式会社サンプル' }}
+
+                  <!-- 連絡先情報 -->
+                  <div class="px-4 py-3">
+                    <div class="space-y-2 text-xs">
+                      <div v-if="config.personalInfo.email" class="flex items-center">
+                        <svg class="w-3 h-3 mr-2 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                        </svg>
+                        <span class="truncate">{{ config.personalInfo.email }}</span>
+                      </div>
+                      <div v-if="config.personalInfo.phone" class="flex items-center">
+                        <svg class="w-3 h-3 mr-2 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
+                        </svg>
+                        <span>{{ config.personalInfo.phone }}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
+                <p class="text-xs text-gray-500 mt-2 text-center">※ 実際の名刺画面とは表示が異なる場合があります</p>
               </div>
-            </div>
-
-            <!-- 画像設定 -->
-            <div class="space-y-4 mb-6">
+            </div><!-- 画像設定 -->
+            <div class="space-y-6 mb-6">
               <h4 class="text-md font-medium text-gray-700">画像設定</h4>
               
               <!-- プロフィール画像 -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">プロフィール画像URL</label>
-                <input 
-                  v-model="config.design.profileImage" 
-                  type="url" 
-                  class="w-full p-2 border rounded" 
-                  placeholder="https://example.com/profile.jpg"
-                >
-                <p class="text-xs text-gray-500 mt-1">名刺に表示されるプロフィール画像のURL</p>
+              <div class="border rounded-lg p-4 bg-gray-50">
+                <label class="block text-sm font-medium text-gray-700 mb-3">プロフィール画像</label>
+                
+                <!-- 現在の画像プレビュー -->
+                <div v-if="config.design.profileImage" class="mb-3">
+                  <img 
+                    :src="config.design.profileImage" 
+                    alt="プロフィール画像プレビュー"
+                    class="w-20 h-20 rounded-full object-cover border-2 border-gray-300"
+                    @error="handleImageError('profileImage')"
+                  >
+                </div>
+                
+                <!-- URL入力 -->
+                <div class="space-y-2">
+                  <input 
+                    v-model="config.design.profileImage" 
+                    type="url" 
+                    class="w-full p-2 border rounded" 
+                    placeholder="https://example.com/profile.jpg"
+                  >
+                  <div class="flex gap-2">
+                    <input 
+                      ref="profileImageFile"
+                      type="file" 
+                      accept="image/*"
+                      class="hidden"
+                      @change="handleImageUpload('profileImage', $event)"
+                    >
+                    <button 
+                      type="button"
+                      @click="$refs.profileImageFile.click()"
+                      class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+                    >
+                      ファイルを選択
+                    </button>
+                    <button 
+                      v-if="config.design.profileImage"
+                      type="button"
+                      @click="config.design.profileImage = ''"
+                      class="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600"
+                    >
+                      削除
+                    </button>
+                  </div>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">名刺に表示されるプロフィール画像（推奨サイズ: 200x200px以上の正方形）</p>
               </div>
               
               <!-- 背景画像 -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">背景画像URL</label>
-                <input 
-                  v-model="config.design.backgroundImage" 
-                  type="url" 
-                  class="w-full p-2 border rounded" 
-                  placeholder="https://example.com/background.jpg"
-                >
-                <p class="text-xs text-gray-500 mt-1">名刺の背景画像のURL</p>
+              <div class="border rounded-lg p-4 bg-gray-50">
+                <label class="block text-sm font-medium text-gray-700 mb-3">背景画像</label>
+                
+                <!-- 現在の画像プレビュー -->
+                <div v-if="config.design.backgroundImage" class="mb-3">
+                  <img 
+                    :src="config.design.backgroundImage" 
+                    alt="背景画像プレビュー"
+                    class="w-full h-24 object-cover rounded border-2 border-gray-300"
+                    @error="handleImageError('backgroundImage')"
+                  >
+                </div>
+                
+                <!-- URL入力 -->
+                <div class="space-y-2">
+                  <input 
+                    v-model="config.design.backgroundImage" 
+                    type="url" 
+                    class="w-full p-2 border rounded" 
+                    placeholder="https://example.com/background.jpg"
+                  >
+                  <div class="flex gap-2">
+                    <input 
+                      ref="backgroundImageFile"
+                      type="file" 
+                      accept="image/*"
+                      class="hidden"
+                      @change="handleImageUpload('backgroundImage', $event)"
+                    >
+                    <button 
+                      type="button"
+                      @click="$refs.backgroundImageFile.click()"
+                      class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+                    >
+                      ファイルを選択
+                    </button>
+                    <button 
+                      v-if="config.design.backgroundImage"
+                      type="button"
+                      @click="config.design.backgroundImage = ''"
+                      class="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600"
+                    >
+                      削除
+                    </button>
+                  </div>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">名刺の背景画像（推奨サイズ: 800x600px以上）</p>
               </div>
               
               <!-- ロゴ画像 -->
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">ロゴ画像URL</label>
-                <input 
-                  v-model="config.design.logoImage" 
-                  type="url" 
-                  class="w-full p-2 border rounded" 
-                  placeholder="https://example.com/logo.png"
-                >
-                <p class="text-xs text-gray-500 mt-1">会社・組織のロゴ画像のURL</p>
+              <div class="border rounded-lg p-4 bg-gray-50">
+                <label class="block text-sm font-medium text-gray-700 mb-3">ロゴ画像</label>
+                
+                <!-- 現在の画像プレビュー -->
+                <div v-if="config.design.logoImage" class="mb-3">
+                  <img 
+                    :src="config.design.logoImage" 
+                    alt="ロゴ画像プレビュー"
+                    class="w-16 h-16 object-contain border-2 border-gray-300 rounded bg-white"
+                    @error="handleImageError('logoImage')"
+                  >
+                </div>
+                
+                <!-- URL入力 -->
+                <div class="space-y-2">
+                  <input 
+                    v-model="config.design.logoImage" 
+                    type="url" 
+                    class="w-full p-2 border rounded" 
+                    placeholder="https://example.com/logo.png"
+                  >
+                  <div class="flex gap-2">
+                    <input 
+                      ref="logoImageFile"
+                      type="file" 
+                      accept="image/*"
+                      class="hidden"
+                      @change="handleImageUpload('logoImage', $event)"
+                    >
+                    <button 
+                      type="button"
+                      @click="$refs.logoImageFile.click()"
+                      class="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+                    >
+                      ファイルを選択
+                    </button>
+                    <button 
+                      v-if="config.design.logoImage"
+                      type="button"
+                      @click="config.design.logoImage = ''"
+                      class="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600"
+                    >
+                      削除
+                    </button>
+                  </div>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">会社・組織のロゴ画像（推奨: 透明背景のPNG形式）</p>
               </div>
             </div>
 
