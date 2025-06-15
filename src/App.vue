@@ -6,6 +6,7 @@ import AdminPanel from './components/AdminPanel.vue'
 
 const currentView = ref('card')
 const urlParams = new URLSearchParams(window.location.search)
+const refreshTrigger = ref(0)
 
 const showCard = () => {
   currentView.value = 'card'
@@ -21,6 +22,11 @@ const showAdmin = () => {
 
 const showMapView = () => {
   currentView.value = 'mapview'
+}
+
+const onConfigUpdated = () => {
+  // 設定が更新されたときに名刺画面を再読み込み
+  refreshTrigger.value += 1
 }
 
 onMounted(() => {
@@ -56,6 +62,7 @@ onMounted(() => {
         v-if="currentView === 'card'" 
         @show-map="showMap"
         @show-map-view="showMapView"
+        :refreshTrigger="refreshTrigger"
       />
       <MapView 
         v-if="currentView === 'map'" 
@@ -69,6 +76,7 @@ onMounted(() => {
       <AdminPanel
         v-if="currentView === 'admin'"
         @back-to-card="showCard"
+        @config-updated="onConfigUpdated"
       />
     </div>
   </div>

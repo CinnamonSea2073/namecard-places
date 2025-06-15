@@ -12,6 +12,7 @@ import os
 import pytz
 import json
 import traceback
+import shutil
 
 app = FastAPI(title="Namecard Places API")
 
@@ -79,6 +80,82 @@ class RecordingSession(BaseModel):
 
 class AdminLogin(BaseModel):
     password: str
+
+class NameCardConfig(BaseModel):
+    personalInfo: dict
+    socialLinks: list
+    design: dict
+
+# 設定ファイル管理
+CONFIG_FILE = "config.json"
+EXAMPLE_CONFIG_FILE = "config.example.json"
+
+def load_config():
+    """設定ファイルを読み込む"""
+    try:
+        # 設定ファイルが存在しない場合、サンプルからコピー
+        if not os.path.exists(CONFIG_FILE) and os.path.exists(EXAMPLE_CONFIG_FILE):
+            shutil.copy2(EXAMPLE_CONFIG_FILE, CONFIG_FILE)
+            print(f"Created {CONFIG_FILE} from {EXAMPLE_CONFIG_FILE}")
+        
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        else:            # デフォルト設定を返す
+            return {
+                "personalInfo": {
+                    "name": "あなたの名前",
+                    "title": "あなたの肩書き",
+                    "company": "あなたの会社名",
+                    "department": "",
+                    "email": "your-email@example.com",
+                    "phone": "",
+                    "website": "https://your-website.com"
+                },
+                "socialLinks": [],
+                "design": {
+                    "primaryColor": "#3B82F6",
+                    "accentColor": "#10B981",
+                    "backgroundColor": "#F8FAFC",
+                    "showQRCode": False,
+                    "theme": "modern",
+                    "profileImage": "",
+                    "backgroundImage": ""
+                }
+            }
+    except Exception as e:
+        print(f"Error loading config: {e}")        # エラーの場合はデフォルト設定を返す
+        return {
+            "personalInfo": {
+                "name": "あなたの名前",
+                "title": "あなたの肩書き",
+                "company": "あなたの会社名",
+                "department": "",
+                "email": "your-email@example.com",
+                "phone": "",
+                "website": "https://your-website.com"
+            },
+            "socialLinks": [],
+            "design": {
+                "primaryColor": "#3B82F6",
+                "accentColor": "#10B981",
+                "backgroundColor": "#F8FAFC",
+                "showQRCode": False,
+                "theme": "modern",
+                "profileImage": "",
+                "backgroundImage": ""
+            }
+        }
+
+def save_config(config_data):
+    """設定ファイルを保存する"""
+    try:
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(config_data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"Error saving config: {e}")
+        return False
 
 # データベース初期化
 def init_db():
@@ -267,6 +344,29 @@ async def delete_location_admin(location_id: int, admin_password: str):
     
     return {"message": "Location deleted successfully"}
 
+# 管理者による設定取得
+@app.get("/api/admin/config")
+async def get_config_admin(admin_password: str):
+    verify_admin_password(admin_password)
+    return load_config()
+
+# 管理者による設定更新
+@app.put("/api/admin/config")
+async def update_config_admin(config: NameCardConfig, admin_password: str):
+    verify_admin_password(admin_password)
+    
+    # 設定データを辞書に変換
+    config_data = {
+        "personalInfo": config.personalInfo,
+        "socialLinks": config.socialLinks,
+        "design": config.design
+    }
+    
+    if save_config(config_data):
+        return {"message": "Configuration updated successfully", "config": config_data}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to save configuration")
+
 # ===== 公開API =====
 
 # 記録セッション状態確認（公開）
@@ -426,13 +526,29 @@ async def delete_location(location_id: int, x_session_id: str = Header(None)):
 # 名刺情報取得
 @app.get("/api/card-info")
 async def get_card_info():
+    config = load_config()
+    
+    # personalInfoから表示用の情報を生成
+    personal_info = config.get("personalInfo", {})
+    social_links = config.get("socialLinks", [])
+    design = config.get("design", {})
+    
+    # 空文字列の項目をフィルタリング
+    filtered_info = {}
+    for key, value in personal_info.items():
+        if value and value.strip():  # 空文字列や空白文字のみでない場合
+            filtered_info[key] = value
+    
+    # 有効なソーシャルリンクのみをフィルタリング
+    enabled_social_links = [
+        link for link in social_links 
+        if link.get("enabled", False) and link.get("url", "").strip()
+    ]
+    
     return {
-        "name": "あなたの名前",
-        "title": "あなたの肩書き",
-        "company": "あなたの会社名",
-        "website": "https://your-website.com",
-        "email": "your-email@example.com",
-        "description": "簡単な自己紹介文をここに記載します。"
+        "personalInfo": filtered_info,
+        "socialLinks": enabled_social_links,
+        "design": design
     }
 
 if __name__ == "__main__":
