@@ -24,22 +24,64 @@ const design = computed(() => cardInfo.value?.design || {})
 
 // 背景スタイルを計算する関数
 const headerBackgroundStyle = computed(() => {
-  const baseGradient = `linear-gradient(135deg, ${design.value.primaryColor || '#3B82F6'}aa 0%, ${design.value.primaryColor || '#3B82F6'}bb 100%)`
+  const primaryColor = design.value.primaryColor || '#3B82F6'
   
   if (design.value.backgroundImage) {
     return {
-      background: `${baseGradient}, url('${design.value.backgroundImage}')`,
+      background: `linear-gradient(135deg, ${primaryColor}aa 0%, ${primaryColor}bb 100%), url('${design.value.backgroundImage}')`,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundBlendMode: 'overlay'
     }
   } else {
     return {
-      background: `linear-gradient(135deg, ${design.value.primaryColor || '#3B82F6'} 0%, ${design.value.primaryColor || '#3B82F6'}dd 100())`,
+      background: `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColor}dd 100%)`,
       backgroundSize: 'cover',
       backgroundPosition: 'center'
     }
   }
+})
+
+// カード全体のクラスを計算
+const cardContainerClasses = computed(() => {
+  const theme = design.value.theme || 'modern'
+  
+  const baseClasses = {
+    'modern': 'bg-white rounded-2xl shadow-2xl transition-all duration-300 hover:shadow-3xl',
+    'minimal': 'bg-white rounded-lg shadow-lg border border-gray-200',
+    'classic': 'bg-white rounded-none shadow-xl border-4 border-gray-800',
+    'creative': 'bg-white rounded-3xl shadow-2xl transform rotate-1 hover:rotate-0 transition-all duration-500',
+    'corporate': 'bg-white rounded-lg shadow-lg border-l-4',
+    'artistic': 'bg-white rounded-2xl shadow-2xl border-2 border-opacity-30'
+  }
+  
+  return baseClasses[theme] || baseClasses.modern
+})
+
+// カード全体のスタイルを計算
+const cardContainerStyle = computed(() => {
+  const theme = design.value.theme || 'modern'
+  const primaryColor = design.value.primaryColor || '#3B82F6'
+  const backgroundColor = design.value.backgroundColor || '#FFFFFF'
+  const textColor = design.value.textColor || '#1F2937'
+  
+  let style = {
+    backgroundColor,
+    color: textColor
+  }
+  
+  // テーマ別の特別なスタイル
+  if (theme === 'corporate') {
+    style.borderLeftColor = primaryColor
+  } else if (theme === 'artistic') {
+    style.borderColor = primaryColor
+  } else if (theme === 'creative') {
+    style.boxShadow = `0 25px 50px -12px ${primaryColor}30`
+  } else if (theme === 'minimal') {
+    style.borderColor = `${primaryColor}40`
+  }
+  
+  return style
 })
 
 // ソーシャルアイコンのマッピング
@@ -173,20 +215,8 @@ const openSocialLink = (url) => {
     </div>    <!-- 名刺表示 -->
     <div 
       v-else-if="cardInfo" 
-      :class="{
-        'bg-white rounded-2xl shadow-2xl transition-all duration-300 hover:shadow-3xl': design.theme === 'modern',
-        'bg-white rounded-lg shadow-lg border border-gray-200': design.theme === 'minimal',
-        'bg-white rounded-none shadow-xl border-4 border-gray-800': design.theme === 'classic',
-        'bg-white rounded-3xl shadow-2xl transform rotate-1 hover:rotate-0 transition-all duration-500': design.theme === 'creative',
-        'bg-white rounded-lg shadow-lg border-l-4': design.theme === 'corporate',
-        'bg-white rounded-2xl shadow-2xl border-2 border-opacity-30': design.theme === 'artistic'
-      }"
-      :style="{
-        backgroundColor: design.backgroundColor || '#FFFFFF',
-        color: design.textColor || '#1F2937',
-        borderColor: design.theme === 'corporate' ? design.primaryColor : 
-                    design.theme === 'artistic' ? design.primaryColor : undefined
-      }"
+      :class="cardContainerClasses"
+      :style="cardContainerStyle"
       class="overflow-hidden"
     >
       <!-- ヘッダー部分 -->

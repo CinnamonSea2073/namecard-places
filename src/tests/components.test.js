@@ -1031,10 +1031,71 @@ describe('AdminPanel - 拡張機能', () => {
 
     // 新しいテーマオプションがthemeOptionsに含まれていることを確認
     const themeOptions = wrapper.vm.themeOptions
-    expect(themeOptions.length).toBeGreaterThan(3) // 元の3つより多い
-    expect(themeOptions.some(theme => theme.value === 'creative')).toBe(true)
+    expect(themeOptions.length).toBeGreaterThan(3) // 元の3つより多い    expect(themeOptions.some(theme => theme.value === 'creative')).toBe(true)
     expect(themeOptions.some(theme => theme.value === 'corporate')).toBe(true)
     expect(themeOptions.some(theme => theme.value === 'artistic')).toBe(true)
+  })
+
+  it('プレビューでテーマ別デザインが正しく表示される', async () => {
+    const mockConfig = {
+      personalInfo: {},
+      socialLinks: [],
+      design: {
+        theme: 'corporate',        primaryColor: '#10B981',
+        backgroundColor: '#FFFFFF',
+        textColor: '#1F2937'
+      }
+    }
+
+    axios.get.mockImplementation((url) => {
+      if (url.includes('/api/admin/config')) {
+        return Promise.resolve({ data: mockConfig })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    const wrapper = mount(AdminPanel)
+    wrapper.vm.adminPassword = 'test'
+    wrapper.vm.isLoggedIn = true
+    wrapper.vm.activeTab = 'config'
+    wrapper.vm.config = mockConfig
+    await flushPromises()
+
+    const previewCardClasses = wrapper.vm.previewCardClasses
+    expect(previewCardClasses).toContain('border-l-4')
+
+    const previewCardStyle = wrapper.vm.previewCardStyle
+    expect(previewCardStyle.borderLeftColor).toBe('#10B981')
+  })
+  it('プレビューで背景画像なしの場合プライマリーカラーが表示される', async () => {
+    const mockConfig = {
+      personalInfo: {},
+      socialLinks: [],
+      design: {
+        theme: 'modern',
+        primaryColor: '#8B5CF6',
+        backgroundColor: '#FFFFFF',
+        textColor: '#1F2937',
+        backgroundImage: '' // 背景画像なし
+      }
+    }
+
+    axios.get.mockImplementation((url) => {
+      if (url.includes('/api/admin/config')) {
+        return Promise.resolve({ data: mockConfig })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    const wrapper = mount(AdminPanel)
+    wrapper.vm.adminPassword = 'test'
+    wrapper.vm.isLoggedIn = true
+    wrapper.vm.activeTab = 'config'
+    await flushPromises()
+
+    const previewHeaderStyle = wrapper.vm.previewHeaderStyle
+    expect(previewHeaderStyle.background).toContain('#8B5CF6')
+    expect(previewHeaderStyle.background).not.toContain('url(')
   })
 
   it('SNS種類変更時にプレースホルダーが更新される', async () => {
@@ -1099,7 +1160,6 @@ describe('NameCard - 拡張テーマ対応', () => {
     expect(nameElement.classes()).toContain('font-semibold')
     expect(nameElement.classes()).toContain('tracking-normal')
   })
-
   it('アーティスティックテーマが正しく適用される', async () => {
     const mockCardInfo = {
       personalInfo: { name: 'テスト太郎' },
@@ -1115,6 +1175,124 @@ describe('NameCard - 拡張テーマ対応', () => {
     const nameElement = wrapper.find('h1')
     expect(nameElement.classes()).toContain('font-bold')
     expect(nameElement.classes()).toContain('tracking-wide')
+  })
+})
+
+describe('NameCard - テーマ別デザイン機能', () => {
+  beforeEach(() => {
+    axios.get.mockClear()
+  })
+
+  it('モダンテーマが適切なクラスを適用する', async () => {
+    const mockCardInfo = {
+      personalInfo: { name: 'テスト太郎' },
+      socialLinks: [],
+      design: { theme: 'modern', primaryColor: '#3B82F6' }
+    }
+
+    axios.get.mockResolvedValue({ data: mockCardInfo })
+
+    const wrapper = mount(NameCard)
+    await flushPromises()
+
+    const cardContainer = wrapper.vm.cardContainerClasses
+    expect(cardContainer).toContain('rounded-2xl')
+    expect(cardContainer).toContain('shadow-2xl')
+  })
+
+  it('クリエイティブテーマが特別なボックスシャドウを適用する', async () => {
+    const mockCardInfo = {
+      personalInfo: { name: 'テスト太郎' },
+      socialLinks: [],
+      design: { theme: 'creative', primaryColor: '#8B5CF6' }
+    }
+
+    axios.get.mockResolvedValue({ data: mockCardInfo })
+
+    const wrapper = mount(NameCard)
+    await flushPromises()
+
+    const cardStyle = wrapper.vm.cardContainerStyle
+    expect(cardStyle.boxShadow).toContain('#8B5CF630')
+  })
+
+  it('コーポレートテーマが左ボーダーカラーを適用する', async () => {
+    const mockCardInfo = {
+      personalInfo: { name: 'テスト太郎' },
+      socialLinks: [],
+      design: { theme: 'corporate', primaryColor: '#10B981' }
+    }
+
+    axios.get.mockResolvedValue({ data: mockCardInfo })
+
+    const wrapper = mount(NameCard)
+    await flushPromises()
+
+    const cardStyle = wrapper.vm.cardContainerStyle
+    expect(cardStyle.borderLeftColor).toBe('#10B981')
+  })
+
+  it('背景画像がない場合プライマリーカラーが表示される', async () => {
+    const mockCardInfo = {
+      personalInfo: { name: 'テスト太郎' },
+      socialLinks: [],
+      design: { 
+        theme: 'modern', 
+        primaryColor: '#F59E0B',
+        backgroundImage: '' // 背景画像なし
+      }
+    }
+
+    axios.get.mockResolvedValue({ data: mockCardInfo })
+
+    const wrapper = mount(NameCard)
+    await flushPromises()
+
+    const headerStyle = wrapper.vm.headerBackgroundStyle
+    expect(headerStyle.background).toContain('#F59E0B')
+    expect(headerStyle.background).not.toContain('url(')
+  })
+
+  it('背景画像がある場合はプライマリーカラーと組み合わせて表示される', async () => {
+    const mockCardInfo = {
+      personalInfo: { name: 'テスト太郎' },
+      socialLinks: [],
+      design: { 
+        theme: 'modern', 
+        primaryColor: '#F59E0B',
+        backgroundImage: 'https://example.com/bg.jpg'
+      }
+    }
+
+    axios.get.mockResolvedValue({ data: mockCardInfo })
+
+    const wrapper = mount(NameCard)
+    await flushPromises()
+
+    const headerStyle = wrapper.vm.headerBackgroundStyle
+    expect(headerStyle.background).toContain('#F59E0B')
+    expect(headerStyle.background).toContain('url(')
+    expect(headerStyle.background).toContain('https://example.com/bg.jpg')
+  })
+
+  it('テーマが未定義の場合はモダンテーマがデフォルトとして適用される', async () => {
+    const mockCardInfo = {
+      personalInfo: { name: 'テスト太郎' },
+      socialLinks: [],
+      design: { 
+        primaryColor: '#3B82F6'
+        // themeが未定義
+      }
+    }
+
+    axios.get.mockResolvedValue({ data: mockCardInfo })
+
+    const wrapper = mount(NameCard)
+    await flushPromises()
+
+    const cardContainer = wrapper.vm.cardContainerClasses
+    expect(cardContainer).toContain('rounded-2xl')
+    expect(cardContainer).toContain('shadow-2xl')
   })
 })
 

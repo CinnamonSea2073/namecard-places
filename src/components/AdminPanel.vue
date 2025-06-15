@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 
 const emit = defineEmits(['back-to-card', 'config-updated'])
@@ -347,6 +347,66 @@ const handleImageError = (imageType) => {
   // エラー時は画像URLをクリア
   config.value.design[imageType] = ''
 }
+
+// プレビュー用のcomputedプロパティ
+const previewCardClasses = computed(() => {
+  const theme = config.value.design?.theme || 'modern'
+  
+  const baseClasses = {
+    'modern': 'rounded-2xl shadow-2xl',
+    'minimal': 'rounded-lg shadow-lg border border-gray-200',
+    'classic': 'rounded-none shadow-xl border-4 border-gray-800',
+    'creative': 'rounded-3xl shadow-2xl transform rotate-1',
+    'corporate': 'rounded-lg shadow-lg border-l-4',
+    'artistic': 'rounded-2xl shadow-2xl border-2 border-opacity-30'
+  }
+  
+  return baseClasses[theme] || baseClasses.modern
+})
+
+const previewCardStyle = computed(() => {
+  const theme = config.value.design?.theme || 'modern'
+  const primaryColor = config.value.design?.primaryColor || '#3B82F6'
+  const backgroundColor = config.value.design?.backgroundColor || '#FFFFFF'
+  const textColor = config.value.design?.textColor || '#1F2937'
+  
+  let style = {
+    backgroundColor,
+    color: textColor
+  }
+  
+  // テーマ別の特別なスタイル
+  if (theme === 'corporate') {
+    style.borderLeftColor = primaryColor
+  } else if (theme === 'artistic') {
+    style.borderColor = primaryColor
+  } else if (theme === 'creative') {
+    style.boxShadow = `0 25px 50px -12px ${primaryColor}30`
+  } else if (theme === 'minimal') {
+    style.borderColor = `${primaryColor}40`
+  }
+  
+  return style
+})
+
+const previewHeaderStyle = computed(() => {
+  const primaryColor = config.value.design?.primaryColor || '#3B82F6'
+  
+  if (config.value.design?.backgroundImage) {
+    return {
+      background: `linear-gradient(135deg, ${primaryColor}aa 0%, ${primaryColor}bb 100%), url('${config.value.design.backgroundImage}')`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundBlendMode: 'overlay'
+    }
+  } else {
+    return {
+      background: `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColor}dd 100%)`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center'
+    }
+  }
+})
 </script>
 
 <template>
@@ -843,22 +903,13 @@ const handleImageError = (imageType) => {
                 <h4 class="text-sm font-medium text-gray-700 mb-3">名刺プレビュー</h4>
                 <div 
                   class="w-full max-w-xs mx-auto rounded-lg overflow-hidden shadow-lg relative"
-                  :style="{
-                    backgroundColor: config.design.backgroundColor,
-                    color: config.design.textColor,
-                    border: `2px solid ${config.design.primaryColor}20`
-                  }"
+                  :class="previewCardClasses"
+                  :style="previewCardStyle"
                 >
                   <!-- ヘッダー部分（背景画像付き） -->
                   <div 
                     class="px-4 py-6 text-center relative"
-                    :style="{
-                      background: config.design.backgroundImage ? 
-                        `linear-gradient(135deg, ${config.design.primaryColor}aa 0%, ${config.design.primaryColor}bb 100%), url('${config.design.backgroundImage}')` :
-                        `linear-gradient(135deg, ${config.design.primaryColor} 0%, ${config.design.primaryColor}dd 100%)`,
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center'
-                    }"
+                    :style="previewHeaderStyle"
                   >
                     <!-- プロフィール画像 -->
                     <div v-if="config.design.profileImage" class="mb-3">
