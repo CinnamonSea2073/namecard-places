@@ -1,18 +1,24 @@
-# Docker用Cloudflare Tunnel設定テンプレート
+# Cloudflare Tunnel設定ファイル（コネクタトークン方式）テンプレート
 # このファイルをコピーしてcloudflare-tunnel.ymlとして使用してください
-# セットアップ後に自動生成されるトンネルIDと認証情報を設定する必要があります
 
-tunnel: <TUNNEL_ID>
-credentials-file: /etc/cloudflared/credentials/<TUNNEL_ID>.json
+# ===== コネクタトークン方式での設定 =====
+# 従来のcredentials-fileの代わりにコネクタトークンを使用します
+# トークンは環境変数 TUNNEL_TOKEN で設定するか、docker-compose.ymlで指定します
 
-# Docker内部からのサービス接続設定
+# トークン方式では以下の設定は不要です：
+# tunnel: トークンから自動的に取得
+# credentials-file: 不要
+
+# 接続設定
 ingress:
   # フロントエンド（Vue.js）- Docker内部ネットワーク経由
   - hostname: namecard-places.your-domain.com
     service: http://frontend:3000
+  
   # バックエンド（FastAPI）- Docker内部ネットワーク経由
   - hostname: api.namecard-places.your-domain.com
     service: http://backend:8000
+  
   # すべての他のトラフィックのデフォルト（必須）
   - service: http_status:404
 
@@ -40,3 +46,10 @@ transport-loglevel: warn
 
 # メトリクス設定（オプション）
 metrics: 0.0.0.0:8081
+
+# ===== 使用方法 =====
+# 1. Cloudflare Dashboardでトンネルを作成
+# 2. コネクタトークンを取得
+# 3. docker-compose.ymlのTUNNEL_TOKEN環境変数にトークンを設定
+# 4. ホスト名を実際のドメインに変更
+# 5. docker-compose upでトンネルが自動起動

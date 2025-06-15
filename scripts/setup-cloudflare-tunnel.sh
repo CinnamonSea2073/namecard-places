@@ -30,6 +30,165 @@ print_error() {
     echo -e "\033[31m❌ $1\033[0m"
 }
 
+# セットアップ方式の選択
+setup_method_selection() {
+    echo ""
+    print_info "セットアップ方式を選択してください："
+    echo "1. コネクタトークン方式（推奨・簡単）"
+    echo "2. 従来の認証ファイル方式（高度）"
+    echo ""
+    read -p "選択してください (1 または 2): " SETUP_METHOD
+    
+    case $SETUP_METHOD in
+        1)
+            print_info "コネクタトークン方式でセットアップします"
+            setup_connector_token
+            ;;
+        2)
+            print_info "従来の認証ファイル方式でセットアップします"
+            setup_traditional
+            ;;
+        *)
+            print_error "無効な選択です。1 または 2 を選択してください。"
+            setup_method_selection
+            ;;
+    esac
+}
+
+# コネクタトークン方式のセットアップ
+setup_connector_token() {
+    echo ""
+    print_info "=== コネクタトークン方式のセットアップ ==="
+    echo ""
+    
+    print_info "以下の手順でCloudflareダッシュボードから設定を行ってください："
+    echo ""
+    echo "1. https://dash.cloudflare.com/ にアクセス"
+    echo "2. 左サイドバーの「Zero Trust」をクリック"
+    echo "3. 「Networks」→「Tunnels」をクリック"
+    echo "4. 「Create a tunnel」をクリック"
+    echo "5. 「Cloudflared」を選択して「Next」"
+    echo "6. トンネル名を入力（例：namecard-places-tunnel）"
+    echo "7. 「Save tunnel」をクリック"
+    echo "8. 「Install and run a connector」ページで："
+    echo "   - Docker形式のコマンドが表示されます"
+    echo "   - '--token' オプションの後にある長いトークン文字列をコピー"
+    echo ""
+    
+    read -p "コネクタトークンを取得しましたか？ (y/n): " TOKEN_READY
+    
+    if [[ $TOKEN_READY != "y" && $TOKEN_READY != "Y" ]]; then
+        print_warning "トークンを取得してから再度実行してください"
+        exit 1
+    fi
+    
+    echo ""
+    print_info "コネクタトークンを入力してください："
+    read -s -p "TUNNEL_TOKEN: " TUNNEL_TOKEN
+    echo ""
+    
+    if [ -z "$TUNNEL_TOKEN" ]; then
+        print_error "トークンが入力されていません"
+        exit 1
+    fi
+    
+    # .envファイルの作成/更新
+    if [ -f ".env" ]; then
+        print_info "既存の.envファイルを更新します"
+        # 既存のTUNNEL_TOKENを更新または追加
+        if grep -q "TUNNEL_TOKEN=" .env; then
+            sed -i "s/TUNNEL_TOKEN=.*/TUNNEL_TOKEN=$TUNNEL_TOKEN/" .env
+        else
+            echo "TUNNEL_TOKEN=$TUNNEL_TOKEN" >> .env
+        fi
+    else
+        print_info ".envファイルを作成します"
+        cp .env.example .env
+        sed -i "s/# TUNNEL_TOKEN=.*/TUNNEL_TOKEN=$TUNNEL_TOKEN/" .env
+    fi
+    
+    print_success "環境変数ファイル(.env)にトークンを設定しました"
+    
+    # ドメイン設定
+    setup_domain_config
+    
+    # Cloudflareダッシュボードでの追加設定説明
+    echo ""
+    print_info "=== Cloudflareダッシュボードでのドメイン設定 ==="
+    echo ""
+    echo "Cloudflareダッシュボードで以下のPublic hostname設定を追加してください："
+    echo ""
+    echo "1. 最初のホスト名："
+    echo "   - Subdomain: $FRONTEND_SUBDOMAIN"
+    echo "   - Domain: $DOMAIN"
+    echo "   - Path: (空白)"
+    echo "   - Service Type: HTTP"
+    echo "   - URL: frontend:3000"
+    echo ""
+    echo "2. 二番目のホスト名："
+    echo "   - Subdomain: $API_SUBDOMAIN"
+    echo "   - Domain: $DOMAIN"  
+    echo "   - Path: (空白)"
+    echo "   - Service Type: HTTP"
+    echo "   - URL: backend:8000"
+    echo ""
+    
+    print_success "コネクタトークン方式のセットアップが完了しました！"
+    echo ""
+    echo "次のステップ："
+    echo "1. Cloudflareダッシュボードで上記のホスト名設定を追加"
+    echo "2. docker-compose up でアプリケーションを起動"
+    echo "3. https://$FRONTEND_SUBDOMAIN.$DOMAIN でアクセス確認"
+}
+
+# ドメイン設定のヘルパー関数
+setup_domain_config() {
+    echo ""
+    print_info "ドメイン設定を行います"
+    
+    read -p "ドメイン名を入力してください (例: example.com): " INPUT_DOMAIN
+    if [ ! -z "$INPUT_DOMAIN" ]; then
+        DOMAIN="$INPUT_DOMAIN"
+    fi
+    
+    read -p "フロントエンド用サブドメインを入力してください (デフォルト: namecard-places): " INPUT_FRONTEND
+    if [ ! -z "$INPUT_FRONTEND" ]; then
+        FRONTEND_SUBDOMAIN="$INPUT_FRONTEND"
+    fi
+    
+    read -p "API用サブドメインを入力してください (デフォルト: api.namecard-places): " INPUT_API
+    if [ ! -z "$INPUT_API" ]; then
+        API_SUBDOMAIN="$INPUT_API"
+    fi
+    
+    print_info "設定されたドメイン："
+    echo "  フロントエンド: https://$FRONTEND_SUBDOMAIN.$DOMAIN"
+    echo "  API: https://$API_SUBDOMAIN.$DOMAIN"
+}
+
+# 従来の認証ファイル方式のセットアップ
+setup_traditional() {
+    echo ""
+    print_info "=== 従来の認証ファイル方式のセットアップ ==="
+    echo ""
+    
+    check_cloudflared
+    
+    # ドメイン設定
+    setup_domain_config
+    
+    login_cloudflare
+    create_tunnel
+    create_dns_records
+    update_config
+    
+    print_success "従来方式のセットアップが完了しました！"
+    echo ""
+    echo "次のステップ："
+    echo "1. docker-compose up でアプリケーションを起動"
+    echo "2. https://$FRONTEND_SUBDOMAIN.$DOMAIN でアクセス確認"
+}
+
 # cloudflaredがインストールされているかチェック
 check_cloudflared() {
     if ! command -v cloudflared &> /dev/null; then
@@ -89,9 +248,9 @@ credentials-file: ~/.cloudflared/$TUNNEL_ID.json
 
 ingress:
   - hostname: $FRONTEND_SUBDOMAIN.$DOMAIN
-    service: http://localhost:5173
+    service: http://frontend:3000
   - hostname: $API_SUBDOMAIN.$DOMAIN
-    service: http://localhost:8000
+    service: http://backend:8000
   - service: http_status:404
 
 originRequest:
@@ -124,26 +283,8 @@ start_tunnel() {
 main() {
     print_info "=== Cloudflare Tunnel セットアップ ==="
     
-    check_cloudflared
-    login_cloudflare
-    create_tunnel
-    create_dns_records
-    update_config
-    
-    print_success "🎉 セットアップが完了しました！"
-    print_info "次のステップ："
-    print_info "1. 開発サーバーを起動: npm run dev"
-    print_info "2. バックエンドを起動: python backend/main.py"
-    print_info "3. トンネルを開始: ./scripts/start-tunnel.sh"
-    
-    echo ""
-    read -p "今すぐトンネルを開始しますか？ (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        start_tunnel
-    else
-        print_info "後でトンネルを開始するには: ./scripts/start-tunnel.sh"
-    fi
+    # セットアップ方式を選択
+    setup_method_selection
 }
 
 # スクリプトが直接実行された場合のみメイン処理を実行

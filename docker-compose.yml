@@ -27,16 +27,23 @@ services:
     volumes:
       - ./backend:/app
       - namecard_data:/app/data
+
   cloudflare-tunnel:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
     command: |
       sh -c "
-      if [ -f /etc/cloudflared/config.yml ] && [ -d /etc/cloudflared/credentials ]; then
-        echo 'Cloudflareトンネル設定が見つかりました。トンネルを開始します...'
-        tunnel --config /etc/cloudflared/config.yml run namecard-places-tunnel
+      if [ ! -z \"$$TUNNEL_TOKEN\" ]; then
+        echo 'コネクタトークンが設定されています。トンネルを開始します...'
+        tunnel --config /etc/cloudflared/config.yml run --token $$TUNNEL_TOKEN
+      elif [ -f /etc/cloudflared/config.yml ] && [ -d /etc/cloudflared/credentials ]; then
+        echo 'Cloudflareトンネル設定ファイルが見つかりました。トンネルを開始します...'
+        tunnel --config /etc/cloudflared/config.yml run
       else
-        echo 'Cloudflareトンネルの設定が不完全です。セットアップを完了してからdocker-composeを再起動してください。'
+        echo 'Cloudflareトンネルの設定が不完全です。'
+        echo '以下のいずれかの方法でセットアップしてください：'
+        echo '1. TUNNEL_TOKEN環境変数にコネクタトークンを設定'
+        echo '2. 従来の設定ファイル方式でセットアップ'
         echo '詳細は README.md の「Cloudflareトンネルの利用」セクションを参照してください。'
         sleep 30
         exit 1
@@ -49,6 +56,7 @@ services:
       - frontend
       - backend
     environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN:-}  # .envファイルまたは環境変数からトークンを取得
       - TUNNEL_METRICS=0.0.0.0:8081
     ports:
       - "8081:8081"  # メトリクスポート（オプション）
