@@ -508,7 +508,8 @@ async def get_locations():
 # 位置情報削除（ユーザー自身の記録のみ）
 @app.delete("/api/locations/{location_id}")
 async def delete_location(location_id: int, x_session_id: str = Header(None)):
-    if not x_session_id:        raise HTTPException(status_code=400, detail="Session ID is required")
+    if not x_session_id:
+        raise HTTPException(status_code=400, detail="Session ID is required")
     
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
