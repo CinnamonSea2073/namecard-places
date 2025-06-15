@@ -6,14 +6,15 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
-      - VITE_API_BASE=http://localhost:8000
+      - VITE_API_BASE=${VITE_API_BASE}
     depends_on:
       - backend
     volumes:
       - ./src:/app/src
       - ./public:/app/public
+
   backend:
     build:
       context: ./backend
@@ -21,11 +22,48 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - SECRET_KEY=your-production-secret-key-change-this
-      - ADMIN_PASSWORD=your-admin-password-change-this
+      - SECRET_KEY=${SECRET_KEY}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
     volumes:
       - ./backend:/app
+      - ./config.json:/app/config.json:ro
+      - ./config.example.json:/app/config.example.json:ro
       - namecard_data:/app/data
+
+  cloudflare-tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --config
+      - /etc/cloudflared/config.yml
+      - run
+      - --token
+      - ${TUNNEL_TOKEN}
+    volumes:
+      - ./cloudflare-tunnel.yml:/etc/cloudflared/config.yml:ro
+      - ~/.cloudflared:/etc/cloudflared/credentials:ro
+    depends_on:
+      - frontend
+      - backend
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN:-}  # .envファイルまたは環境変数からトークンを取得
+      - TUNNEL_METRICS=${TUNNEL_METRICS:-0.0.0.0:8081}
+    ports:
+      - "8081:8081"  # メトリクスポート（オプション）
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8081/metrics || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 volumes:
   namecard_data:
+
+networks:
+  default:
+    driver: bridge

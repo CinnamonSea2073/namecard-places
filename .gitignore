@@ -23,6 +23,12 @@ dist-ssr
 *.sln
 *.sw?
 
+# Cloudflare Tunnel
+.cloudflared/
+*.json
+cloudflare-tunnel.yml
+!config.example.json
+
 # Python
 __pycache__/
 *.py[cod]
@@ -57,8 +63,10 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
-# Environments
+# Environments and sensitive files
 .env
+.env.local
+.env.*.local
 .venv
 env/
 venv/

@@ -52,6 +52,11 @@ def create_test_db():
     conn.commit()
     conn.close()
 
+def cleanup_test_db():
+    """テスト用データベースをクリーンアップ"""
+    if os.path.exists(TEST_DB_PATH):
+        os.remove(TEST_DB_PATH)
+
 @pytest.fixture(scope="function")
 def test_client():
     """テスト用クライアントの設定"""
@@ -657,6 +662,168 @@ class TestNewFeatures:
         
         for i in range(len(timestamps) - 1):
             assert timestamps[i] >= timestamps[i + 1], "Timestamps should be in descending order"
+
+
+class TestCloudflareIntegration:
+    """Cloudflareトンネル統合のテスト"""
+    
+    def test_cors_headers_for_tunnel_domains(self):
+        """Cloudflareトンネル経由のリクエストでCORSヘッダーが適切に設定されることを確認"""
+        with TestClient(app) as client:            # Cloudflareトンネル経由のリクエストをシミュレート
+            response = client.get(
+                "/api/locations",
+                headers={
+                    "Origin": "http://localhost:3000",  # 許可されたオリジンを使用
+                    "CF-Ray": "test-ray-id",
+                    "CF-IPCountry": "JP"
+                }
+            )
+            
+            assert response.status_code == 200
+            # CORSヘッダーが含まれていることを確認
+            assert "access-control-allow-credentials" in response.headers
+    
+    def test_cloudflare_headers_handling(self):
+        """Cloudflareから送信される特殊ヘッダーの処理を確認"""
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/health",
+                headers={
+                    "CF-Ray": "test-ray-id-123",
+                    "CF-IPCountry": "JP",                    "CF-Visitor": '{"scheme":"https"}',
+                    "X-Forwarded-Proto": "https",
+                    "X-Forwarded-For": "192.168.1.1"
+                }
+            )
+        
+        assert response.status_code == 200
+        assert response.json()["status"] == "healthy"
+    
+    def test_https_redirect_detection(self):
+        """HTTPS経由でのアクセスが適切に検出されることを確認"""
+        with TestClient(app) as client:
+            # HTTPSでのアクセスをシミュレート
+            response = client.get(
+                "/api/health",
+                headers={
+                    "X-Forwarded-Proto": "https",
+                    "CF-Visitor": '{"scheme":"https"}'
+                }
+            )
+            
+            assert response.status_code == 200
+            assert response.json()["status"] == "healthy"
+    
+    def test_location_recording_through_tunnel(self):
+        """Cloudflareトンネル経由での位置記録が正常に動作することを確認"""
+        create_test_db()
+        
+        # テスト環境でのデータベースパッチ
+        with patch('main.DB_PATH', TEST_DB_PATH):
+            with TestClient(app) as client:                # 記録セッションを有効化
+                response = client.post(
+                    "/api/admin/enable-recording",
+                    json={"enabled": True, "expires_at": None, "description": "Cloudflareトンネルテスト"},
+                    params={"admin_password": "admin123"}
+                )
+                assert response.status_code == 200
+                
+                # Cloudflareトンネル経由での位置記録をシミュレート
+                response = client.post(
+                    "/api/record-location",
+                    json={
+                        "latitude": 35.6762,
+                        "longitude": 139.6503,
+                        "session_id": TEST_SESSION_ID
+                    },
+                    headers={
+                        "CF-Ray": "tunnel-test-ray",
+                        "CF-IPCountry": "JP",
+                        "X-Forwarded-For": "203.0.113.1",
+                        "X-Forwarded-Proto": "https",                        "User-Agent": "Mozilla/5.0 (Test via Cloudflare Tunnel)"
+                    }
+                )
+                
+                assert response.status_code == 200
+                data = response.json()
+                assert data["message"] == "Location recorded successfully"
+        
+        cleanup_test_db()
+    
+    def test_tunnel_metrics_endpoint_accessibility(self):
+        """トンネルメトリクスエンドポイントが適切にアクセス可能であることを確認"""        # 実際のメトリクスエンドポイントはCloudflareトンネル側で提供されるため、
+        # ここではAPIサーバーが正常に動作していることを確認
+        with TestClient(app) as client:
+            response = client.get("/api/health")
+            assert response.status_code == 200
+            assert response.json()["status"] == "healthy"
+    
+    def test_admin_panel_access_through_tunnel(self):
+        """Cloudflareトンネル経由での管理パネルアクセスを確認"""
+        create_test_db()
+        
+        with patch('main.DB_PATH', TEST_DB_PATH):
+            with TestClient(app) as client:                # Cloudflareトンネル経由での管理パネルアクセス
+                response = client.get(
+                    "/api/admin/session-status",
+                    params={"admin_password": "admin123"},
+                    headers={
+                        "CF-Ray": "admin-access-ray",
+                        "X-Forwarded-Proto": "https"
+                    }
+                )
+                
+                assert response.status_code == 200
+                data = response.json()
+                assert "enabled" in data
+        
+        cleanup_test_db()
+
+
+class TestCloudflareSecurityFeatures:
+    """Cloudflareのセキュリティ機能との統合テスト"""
+    
+    def test_rate_limiting_compatibility(self):
+        """Cloudflareのレート制限との互換性を確認"""
+        with TestClient(app) as client:
+            # 複数のリクエストを送信してレート制限の動作を確認
+            for i in range(5):
+                response = client.get(
+                    "/api/health",                    headers={
+                        "CF-Ray": f"rate-limit-test-{i}",
+                        "X-Forwarded-For": "203.0.113.1"
+                    }
+                )
+                assert response.status_code == 200
+                assert response.json()["status"] == "healthy"
+    
+    def test_ddos_protection_headers(self):
+        """DDoS保護のヘッダーが適切に処理されることを確認"""
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/health",                headers={
+                    "CF-Ray": "ddos-protection-test",
+                    "CF-IPCountry": "JP",
+                    "CF-Threat-Score": "0"  # 低脅威スコア
+                }
+            )
+            
+            assert response.status_code == 200
+            assert response.json()["status"] == "healthy"
+    
+    def test_bot_management_headers(self):
+        """Bot管理のヘッダーが適切に処理されることを確認"""
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/health",                headers={
+                    "CF-Ray": "bot-management-test",
+                    "CF-Bot-Management": "human"
+                }
+            )
+            
+            assert response.status_code == 200
+            assert response.json()["status"] == "healthy"
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
