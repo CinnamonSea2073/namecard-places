@@ -23,15 +23,15 @@ const config = ref({
     phone: '',
     website: ''
   },
-  socialLinks: [],  design: {
+  socialLinks: [],
+  design: {
     theme: 'modern',
     primaryColor: '#3B82F6',
     backgroundColor: '#FFFFFF',
     textColor: '#1F2937',
     profileImage: '',
     backgroundImage: '',
-    showProfileImage: true,
-    showBackgroundImage: false
+    logoImage: ''
   }
 })
 const configLoading = ref(false)
@@ -196,53 +196,6 @@ const applyColorPalette = (paletteKey) => {
   const palette = colorPalettes[paletteKey]
   if (palette) {
     config.value.design.primaryColor = palette.primary
-  }
-}
-
-// 画像処理関数
-const handleImageUpload = async (event, imageType) => {
-  const file = event.target.files[0]
-  if (!file) return
-  
-  // ファイルサイズ制限 (2MB)
-  if (file.size > 2 * 1024 * 1024) {
-    alert('ファイルサイズが大きすぎます。2MB以下のファイルを選択してください。')
-    return
-  }
-  
-  // ファイル形式チェック
-  if (!file.type.startsWith('image/')) {
-    alert('画像ファイルを選択してください。')
-    return
-  }
-  
-  try {
-    const base64 = await convertToBase64(file)
-    if (imageType === 'profile') {
-      config.value.design.profileImage = base64
-    } else if (imageType === 'background') {
-      config.value.design.backgroundImage = base64
-    }
-  } catch (error) {
-    console.error('画像の処理中にエラーが発生しました:', error)
-    alert('画像のアップロードに失敗しました。')
-  }
-}
-
-const convertToBase64 = (file) => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.readAsDataURL(file)
-    reader.onload = () => resolve(reader.result)
-    reader.onerror = (error) => reject(error)
-  })
-}
-
-const removeImage = (imageType) => {
-  if (imageType === 'profile') {
-    config.value.design.profileImage = ''
-  } else if (imageType === 'background') {
-    config.value.design.backgroundImage = ''
   }
 }
 
@@ -839,99 +792,6 @@ const getStatusColor = () => {
                 </div>
               </div>
 
-              <!-- 画像設定 -->
-              <div class="mb-6">
-                <h4 class="text-sm font-medium text-gray-700 mb-4">画像設定</h4>
-                
-                <!-- プロフィール画像 -->
-                <div class="mb-4">
-                  <div class="flex items-center justify-between mb-2">
-                    <label class="text-sm font-medium text-gray-700">プロフィール画像</label>
-                    <div class="flex items-center space-x-2">
-                      <input 
-                        v-model="config.design.showProfileImage"
-                        type="checkbox"
-                        class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span class="text-sm text-gray-600">表示する</span>
-                    </div>
-                  </div>
-                  
-                  <div v-if="config.design.showProfileImage" class="space-y-3">
-                    <div v-if="config.design.profileImage" class="flex items-center space-x-3">
-                      <img 
-                        :src="config.design.profileImage" 
-                        alt="プロフィール画像" 
-                        class="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
-                      />
-                      <div class="flex-1">
-                        <p class="text-sm text-gray-600">プロフィール画像が設定されています</p>
-                        <button 
-                          @click="removeImage('profile')"
-                          class="text-red-600 hover:text-red-800 text-sm"
-                        >
-                          削除
-                        </button>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        @change="handleImageUpload($event, 'profile')"
-                        class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                      />
-                      <p class="text-xs text-gray-500 mt-1">JPG、PNG形式、2MB以下推奨</p>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- 背景画像 -->
-                <div class="mb-4">
-                  <div class="flex items-center justify-between mb-2">
-                    <label class="text-sm font-medium text-gray-700">背景画像</label>
-                    <div class="flex items-center space-x-2">
-                      <input 
-                        v-model="config.design.showBackgroundImage"
-                        type="checkbox"
-                        class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span class="text-sm text-gray-600">表示する</span>
-                    </div>
-                  </div>
-                  
-                  <div v-if="config.design.showBackgroundImage" class="space-y-3">
-                    <div v-if="config.design.backgroundImage" class="flex items-center space-x-3">
-                      <img 
-                        :src="config.design.backgroundImage" 
-                        alt="背景画像" 
-                        class="w-20 h-12 rounded object-cover border-2 border-gray-200"
-                      />
-                      <div class="flex-1">
-                        <p class="text-sm text-gray-600">背景画像が設定されています</p>
-                        <button 
-                          @click="removeImage('background')"
-                          class="text-red-600 hover:text-red-800 text-sm"
-                        >
-                          削除
-                        </button>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        @change="handleImageUpload($event, 'background')"
-                        class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                      />
-                      <p class="text-xs text-gray-500 mt-1">JPG、PNG形式、2MB以下推奨。背景として使用されます。</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               <!-- プレビュー -->
               <div class="bg-gray-50 rounded-lg p-4">
                 <h4 class="text-sm font-medium text-gray-700 mb-3">プレビュー</h4>
@@ -961,6 +821,47 @@ const getStatusColor = () => {
                     {{ config.personalInfo.company || '株式会社サンプル' }}
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <!-- 画像設定 -->
+            <div class="space-y-4 mb-6">
+              <h4 class="text-md font-medium text-gray-700">画像設定</h4>
+              
+              <!-- プロフィール画像 -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">プロフィール画像URL</label>
+                <input 
+                  v-model="config.design.profileImage" 
+                  type="url" 
+                  class="w-full p-2 border rounded" 
+                  placeholder="https://example.com/profile.jpg"
+                >
+                <p class="text-xs text-gray-500 mt-1">名刺に表示されるプロフィール画像のURL</p>
+              </div>
+              
+              <!-- 背景画像 -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">背景画像URL</label>
+                <input 
+                  v-model="config.design.backgroundImage" 
+                  type="url" 
+                  class="w-full p-2 border rounded" 
+                  placeholder="https://example.com/background.jpg"
+                >
+                <p class="text-xs text-gray-500 mt-1">名刺の背景画像のURL</p>
+              </div>
+              
+              <!-- ロゴ画像 -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">ロゴ画像URL</label>
+                <input 
+                  v-model="config.design.logoImage" 
+                  type="url" 
+                  class="w-full p-2 border rounded" 
+                  placeholder="https://example.com/logo.png"
+                >
+                <p class="text-xs text-gray-500 mt-1">会社・組織のロゴ画像のURL</p>
               </div>
             </div>
 

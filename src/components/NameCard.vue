@@ -168,12 +168,13 @@ const openSocialLink = (url) => {
                     design.theme === 'artistic' ? design.primaryColor : undefined
       }"
       class="overflow-hidden"
-    >      <!-- ヘッダー部分 -->
+    >
+      <!-- ヘッダー部分 -->
       <div 
         class="px-8 py-6 text-center relative overflow-hidden"
         :style="{
           background: design.backgroundImage ? 
-            `linear-gradient(135deg, ${design.primaryColor || '#3B82F6'}cc 0%, ${design.primaryColor || '#3B82F6'}aa 100%), url(${design.backgroundImage})` :
+            `linear-gradient(135deg, ${design.primaryColor || '#3B82F6'}aa 0%, ${design.primaryColor || '#3B82F6'}bb 100%), url('${design.backgroundImage}')` :
             `linear-gradient(135deg, ${design.primaryColor || '#3B82F6'} 0%, ${design.primaryColor || '#3B82F6'}dd 100%)`,
           backgroundSize: 'cover',
           backgroundPosition: 'center'
@@ -185,16 +186,17 @@ const openSocialLink = (url) => {
           <div class="absolute bottom-2 left-6 w-12 h-12 rounded-full border border-white"></div>
         </div>
         
+        <!-- プロフィール画像 -->
+        <div v-if="design.profileImage" class="relative z-10 mb-4">
+          <img 
+            :src="design.profileImage" 
+            :alt="`${personalInfo.name}のプロフィール画像`"
+            class="w-24 h-24 rounded-full mx-auto object-cover border-4 border-white shadow-lg"
+            @error="$event.target.style.display='none'"
+          >
+        </div>
+        
         <div class="relative z-10">
-          <!-- プロフィール画像 -->
-          <div v-if="design.profileImage" class="mb-4 flex justify-center">
-            <img 
-              :src="design.profileImage" 
-              alt="プロフィール画像"
-              class="w-24 h-24 rounded-full border-4 border-white shadow-lg object-cover"
-            />
-          </div>
-          
           <h1 
             class="text-3xl text-white mb-2"
             :class="{
@@ -221,7 +223,17 @@ const openSocialLink = (url) => {
       <div class="px-8 py-6 border-b border-gray-100">
         <div class="space-y-2">
           <div v-if="personalInfo.company" class="flex items-center">
-            <svg class="w-5 h-5 mr-3 opacity-60" fill="currentColor" viewBox="0 0 20 20">
+            <!-- ロゴ画像がある場合は表示 -->
+            <div v-if="design.logoImage" class="mr-3">
+              <img 
+                :src="design.logoImage" 
+                :alt="`${personalInfo.company}のロゴ`"
+                class="w-8 h-8 object-contain"
+                @error="$event.target.style.display='none'"
+              >
+            </div>
+            <!-- ロゴ画像がない場合は従来のアイコン -->
+            <svg v-else class="w-5 h-5 mr-3 opacity-60" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a1 1 0 110 2h-3a1 1 0 01-1-1v-2a1 1 0 00-1-1H9a1 1 0 00-1 1v2a1 1 0 01-1 1H4a1 1 0 110-2V4zm3 1h2v2H7V5zm2 4H7v2h2V9zm2-4h2v2h-2V5zm2 4h-2v2h2V9z" clip-rule="evenodd"/>
             </svg>
             <span class="font-medium">{{ personalInfo.company }}</span>

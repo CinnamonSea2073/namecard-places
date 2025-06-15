@@ -101,8 +101,7 @@ def load_config():
         if os.path.exists(CONFIG_FILE):
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        else:
-            # デフォルト設定を返す
+        else:            # デフォルト設定を返す
             return {
                 "personalInfo": {
                     "name": "あなたの名前",
@@ -118,12 +117,14 @@ def load_config():
                     "primaryColor": "#3B82F6",
                     "accentColor": "#10B981",
                     "backgroundColor": "#F8FAFC",
-                    "showQRCode": False
+                    "showQRCode": False,
+                    "theme": "modern",
+                    "profileImage": "",
+                    "backgroundImage": ""
                 }
             }
     except Exception as e:
-        print(f"Error loading config: {e}")
-        # エラーの場合はデフォルト設定を返す
+        print(f"Error loading config: {e}")        # エラーの場合はデフォルト設定を返す
         return {
             "personalInfo": {
                 "name": "あなたの名前",
@@ -139,7 +140,10 @@ def load_config():
                 "primaryColor": "#3B82F6",
                 "accentColor": "#10B981",
                 "backgroundColor": "#F8FAFC",
-                "showQRCode": False
+                "showQRCode": False,
+                "theme": "modern",
+                "profileImage": "",
+                "backgroundImage": ""
             }
         }
 

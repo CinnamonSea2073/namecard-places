@@ -41,6 +41,26 @@
     "primaryColor": "#3B82F6",
     "accentColor": "#10B981",
     "backgroundColor": "#F8FAFC",
-    "showQRCode": false
+    "showQRCode": false,
+    "theme": "modern",
+    "profileImage": {
+      "enabled": false,
+      "url": "",
+      "position": "left",
+      "size": "medium",
+      "shape": "circle"
+    },
+    "backgroundImage": {
+      "enabled": false,
+      "url": "",
+      "opacity": 0.1,
+      "position": "center"
+    },
+    "logoImage": {
+      "enabled": false,
+      "url": "",
+      "position": "header",
+      "size": "small"
+    }
   }
 }
