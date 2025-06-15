@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       - VITE_API_BASE=http://localhost:8000
     depends_on:
@@ -27,7 +27,6 @@ services:
     volumes:
       - ./backend:/app
       - namecard_data:/app/data
-
   cloudflare-tunnel:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
@@ -35,10 +34,10 @@ services:
       sh -c "
       if [ ! -z \"$$TUNNEL_TOKEN\" ]; then
         echo 'コネクタトークンが設定されています。トンネルを開始します...'
-        tunnel --config /etc/cloudflared/config.yml run --token $$TUNNEL_TOKEN
+        cloudflared tunnel --config /etc/cloudflared/config.yml run --token $$TUNNEL_TOKEN
       elif [ -f /etc/cloudflared/config.yml ] && [ -d /etc/cloudflared/credentials ]; then
         echo 'Cloudflareトンネル設定ファイルが見つかりました。トンネルを開始します...'
-        tunnel --config /etc/cloudflared/config.yml run
+        cloudflared tunnel --config /etc/cloudflared/config.yml run
       else
         echo 'Cloudflareトンネルの設定が不完全です。'
         echo '以下のいずれかの方法でセットアップしてください：'

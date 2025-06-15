@@ -3,3 +3,4 @@ uvicorn[standard]==0.32.1
 pyjwt==2.10.1
 pydantic==2.10.5
 python-multipart==0.0.20
+pytz==2023.3
