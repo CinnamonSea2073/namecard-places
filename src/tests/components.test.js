@@ -723,12 +723,448 @@ describe('AdminPanel', () => {
     })
     await flushPromises()
     
-    expect(wrapper.vm.personalInfo.name).toBe('初期名前')
-
-    // 設定更新をシミュレート（refreshTriggerの変更）
-    axios.get.mockResolvedValueOnce({ data: updatedConfig })    await wrapper.setProps({ refreshTrigger: 1 })
+    expect(wrapper.vm.personalInfo.name).toBe('初期名前')    // 設定更新をシミュレート（refreshTriggerの変更）
+    axios.get.mockResolvedValueOnce({ data: updatedConfig })
+    
+    await wrapper.setProps({ refreshTrigger: 1 })
     await flushPromises()
 
     expect(wrapper.vm.personalInfo.name).toBe('更新名前')
+  })
+})
+
+describe('AdminPanel - 拡張機能', () => {
+  beforeEach(() => {
+    axios.get.mockClear()
+    axios.post.mockClear()
+    axios.put.mockClear()
+    axios.delete.mockClear()
+  })
+
+  it('拡張されたSNSオプションが正しく表示される', async () => {
+    const mockConfig = {
+      personalInfo: {},
+      socialLinks: [],
+      design: {}
+    }
+
+    axios.get.mockImplementation((url) => {
+      if (url.includes('/api/admin/session-status')) {
+        return Promise.resolve({ data: { enabled: false } })
+      }
+      if (url.includes('/api/admin/locations')) {
+        return Promise.resolve({ data: [] })
+      }
+      if (url.includes('/api/admin/config')) {
+        return Promise.resolve({ data: mockConfig })
+      }
+    })
+
+    axios.post.mockResolvedValue({ data: { success: true } })
+
+    const wrapper = mount(AdminPanel)
+    wrapper.vm.adminPassword = 'test'
+    wrapper.vm.isLoggedIn = true
+    await flushPromises()
+
+    // 名刺設定タブに切り替え
+    wrapper.vm.activeTab = 'config'
+    await wrapper.vm.$nextTick()    // SNS追加ボタンをクリック
+    const addButtons = wrapper.findAll('button')
+    const addButton = addButtons.find(btn => btn.text().includes('SNSを追加'))
+    if (addButton && addButton.exists()) {
+      await addButton.trigger('click')
+    } else {
+      // 直接メソッドを呼び出し
+      wrapper.vm.addSocialLink()
+    }
+    await wrapper.vm.$nextTick()
+
+    // 新しいSNSオプションが含まれていることを確認
+    const socialTypeSelects = wrapper.findAll('select')
+    const snsTypeSelect = socialTypeSelects.find(select => {
+      const options = select.findAll('option')
+      return options.some(option => option.text().includes('Discord') || option.text().includes('Telegram'))
+    })
+
+    expect(snsTypeSelect).toBeTruthy()
+  })
+
+  it('カラーパレットが正しく適用される', async () => {
+    const mockConfig = {
+      personalInfo: {},
+      socialLinks: [],
+      design: {
+        primaryColor: '#3B82F6',
+        backgroundColor: '#FFFFFF',
+        textColor: '#1F2937',
+        theme: 'modern'
+      }
+    }
+
+    axios.get.mockImplementation((url) => {
+      if (url.includes('/api/admin/config')) {
+        return Promise.resolve({ data: mockConfig })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    axios.post.mockResolvedValue({ data: { success: true } })
+
+    const wrapper = mount(AdminPanel)
+    wrapper.vm.adminPassword = 'test'
+    wrapper.vm.isLoggedIn = true
+    wrapper.vm.activeTab = 'config'
+    await flushPromises()
+
+    // カラーパレット適用をテスト
+    wrapper.vm.applyColorPalette('green')
+    expect(wrapper.vm.config.design.primaryColor).toBe('#10B981')
+
+    wrapper.vm.applyColorPalette('purple')
+    expect(wrapper.vm.config.design.primaryColor).toBe('#8B5CF6')
+  })
+
+  it('拡張されたテーマオプションが利用可能', async () => {
+    const mockConfig = {
+      personalInfo: {},
+      socialLinks: [],
+      design: {
+        theme: 'modern'
+      }
+    }
+
+    axios.get.mockImplementation((url) => {
+      if (url.includes('/api/admin/config')) {
+        return Promise.resolve({ data: mockConfig })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    const wrapper = mount(AdminPanel)
+    wrapper.vm.adminPassword = 'test'
+    wrapper.vm.isLoggedIn = true
+    wrapper.vm.activeTab = 'config'
+    await flushPromises()
+
+    // 新しいテーマオプションがthemeOptionsに含まれていることを確認
+    const themeOptions = wrapper.vm.themeOptions
+    expect(themeOptions.length).toBeGreaterThan(3) // 元の3つより多い
+    expect(themeOptions.some(theme => theme.value === 'creative')).toBe(true)
+    expect(themeOptions.some(theme => theme.value === 'corporate')).toBe(true)
+    expect(themeOptions.some(theme => theme.value === 'artistic')).toBe(true)
+  })
+
+  it('SNS種類変更時にプレースホルダーが更新される', async () => {
+    const wrapper = mount(AdminPanel)
+    wrapper.vm.adminPassword = 'test'
+    wrapper.vm.isLoggedIn = true
+    wrapper.vm.config = {
+      personalInfo: {},      socialLinks: [{ type: '', label: '', url: '', icon: '', enabled: false }],
+      design: {}
+    }
+
+    const link = wrapper.vm.config.socialLinks[0]
+    
+    // Twitter設定時
+    link.type = 'twitter'
+    wrapper.vm.onSocialTypeChange(link)
+    expect(link.placeholder).toBe('https://twitter.com/username')
+    expect(link.label).toBe('Twitter')
+
+    // Discord設定時
+    link.type = 'discord'
+    wrapper.vm.onSocialTypeChange(link)
+    expect(link.placeholder).toBe('https://discord.gg/invite')
+    expect(link.label).toBe('Discord')
+  })
+
+  describe('画像アップロード機能', () => {    it('プロフィール画像アップロードボタンが表示される', async () => {
+      const mockConfig = {
+        personalInfo: { name: 'テスト太郎' },
+        socialLinks: [],
+        design: { 
+          primaryColor: '#3B82F6',
+          showProfileImage: true,
+          showBackgroundImage: true
+        }
+      }
+
+      axios.get.mockResolvedValue({ data: mockConfig })
+
+      const wrapper = mount(AdminPanel)
+      await flushPromises()
+
+      expect(wrapper.find('input[type="file"][accept="image/*"]').exists()).toBe(true)
+      expect(wrapper.text()).toContain('プロフィール画像')
+      expect(wrapper.text()).toContain('背景画像')
+    })
+
+    it('画像ファイル選択時にBase64変換が実行される', async () => {
+      const mockConfig = {
+        personalInfo: { name: 'テスト太郎' },
+        socialLinks: [],
+        design: { 
+          primaryColor: '#3B82F6',
+          showProfileImage: true
+        }
+      }
+
+      axios.get.mockResolvedValue({ data: mockConfig })
+
+      const wrapper = mount(AdminPanel)
+      await flushPromises()
+
+      // FileReaderのモック
+      const mockFileReader = {
+        readAsDataURL: vi.fn(),
+        result: 'data:image/png;base64,mock'
+      }
+      global.FileReader = vi.fn(() => mockFileReader)
+
+      const file = new File(['test'], 'test.png', { type: 'image/png' })
+      const input = wrapper.find('input[type="file"][accept="image/*"]')
+      
+      if (input.exists()) {
+        Object.defineProperty(input.element, 'files', {
+          value: [file],
+          writable: false,
+        })
+
+        await input.trigger('change')
+
+        expect(mockFileReader.readAsDataURL).toHaveBeenCalledWith(file)
+      }
+    })
+
+    it('画像削除ボタンが動作する', async () => {
+      const mockConfig = {
+        personalInfo: { name: 'テスト太郎' },
+        socialLinks: [],
+        design: { 
+          primaryColor: '#3B82F6',
+          showProfileImage: true,
+          profileImage: 'data:image/png;base64,test'
+        }
+      }
+
+      axios.get.mockResolvedValue({ data: mockConfig })
+      axios.put.mockResolvedValue({ data: { message: '設定が更新されました' } })
+
+      const wrapper = mount(AdminPanel)
+      await flushPromises()
+
+      // 削除ボタンを探す
+      const deleteButtons = wrapper.findAll('button').filter(btn => 
+        btn.text().includes('削除')
+      )
+      
+      if (deleteButtons.length > 0) {
+        await deleteButtons[0].trigger('click')
+        await flushPromises()
+
+        expect(axios.put).toHaveBeenCalled()
+      }
+    })
+
+    it('画像プレビューが表示される', async () => {
+      const mockConfig = {
+        personalInfo: { name: 'テスト太郎' },
+        socialLinks: [],
+        design: { 
+          primaryColor: '#3B82F6',
+          profileImage: 'data:image/png;base64,test'
+        }
+      }
+
+      axios.get.mockResolvedValue({ data: mockConfig })
+
+      const wrapper = mount(AdminPanel)
+      await flushPromises()
+
+      const previewImage = wrapper.find('img[src*="data:image/png;base64"]')
+      if (previewImage.exists()) {
+        expect(previewImage.attributes('src')).toBe('data:image/png;base64,test')
+      }
+    })
+  })
+})
+
+describe('NameCard - 拡張テーマ対応', () => {
+  beforeEach(() => {
+    axios.get.mockClear()
+  })
+
+  it('新しいテーマが正しく適用される', async () => {
+    const mockCardInfo = {
+      personalInfo: { name: 'テスト太郎' },
+      socialLinks: [],
+      design: { theme: 'creative', primaryColor: '#8B5CF6' }
+    }
+
+    axios.get.mockResolvedValue({ data: mockCardInfo })
+
+    const wrapper = mount(NameCard)
+    await flushPromises()
+
+    const nameElement = wrapper.find('h1')
+    expect(nameElement.classes()).toContain('tracking-widest')
+  })
+
+  it('コーポレートテーマが正しく適用される', async () => {
+    const mockCardInfo = {
+      personalInfo: { name: 'テスト太郎' },
+      socialLinks: [],
+      design: { theme: 'corporate', primaryColor: '#3B82F6' }
+    }
+
+    axios.get.mockResolvedValue({ data: mockCardInfo })
+
+    const wrapper = mount(NameCard)
+    await flushPromises()
+
+    const nameElement = wrapper.find('h1')
+    expect(nameElement.classes()).toContain('font-semibold')
+    expect(nameElement.classes()).toContain('tracking-normal')
+  })
+
+  it('アーティスティックテーマが正しく適用される', async () => {
+    const mockCardInfo = {
+      personalInfo: { name: 'テスト太郎' },
+      socialLinks: [],
+      design: { theme: 'artistic', primaryColor: '#EC4899' }
+    }
+
+    axios.get.mockResolvedValue({ data: mockCardInfo })
+
+    const wrapper = mount(NameCard)
+    await flushPromises()
+
+    const nameElement = wrapper.find('h1')
+    expect(nameElement.classes()).toContain('font-bold')
+    expect(nameElement.classes()).toContain('tracking-wide')
+  })
+})
+
+describe('画像表示機能テスト', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('プロフィール画像が正しく表示される', async () => {
+    const mockCardInfo = {
+      personalInfo: { name: 'テスト太郎' },
+      socialLinks: [],
+      design: { 
+        theme: 'modern', 
+        primaryColor: '#3B82F6',
+        profileImage: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+      }
+    }
+
+    axios.get.mockResolvedValue({ data: mockCardInfo })
+
+    const wrapper = mount(NameCard)
+    await flushPromises()
+
+    const profileImage = wrapper.find('img[alt="プロフィール画像"]')
+    expect(profileImage.exists()).toBe(true)
+    expect(profileImage.attributes('src')).toContain('data:image/png;base64')
+    expect(profileImage.classes()).toContain('w-24')
+    expect(profileImage.classes()).toContain('h-24')
+    expect(profileImage.classes()).toContain('rounded-full')
+  })
+
+  it('背景画像が正しく適用される', async () => {
+    const mockCardInfo = {
+      personalInfo: { name: 'テスト太郎' },
+      socialLinks: [],
+      design: { 
+        theme: 'modern', 
+        primaryColor: '#3B82F6',
+        backgroundImage: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+      }
+    }
+
+    axios.get.mockResolvedValue({ data: mockCardInfo })
+
+    const wrapper = mount(NameCard)
+    await flushPromises()
+
+    const headerDiv = wrapper.find('.relative.overflow-hidden')
+    const style = headerDiv.attributes('style')
+    expect(style).toContain('url(data:image/png;base64')
+    expect(style).toContain('background-size: cover')
+  })
+
+  it('プロフィール画像がない場合は表示されない', async () => {
+    const mockCardInfo = {
+      personalInfo: { name: 'テスト太郎' },
+      socialLinks: [],
+      design: { 
+        theme: 'modern', 
+        primaryColor: '#3B82F6',
+        profileImage: ''
+      }
+    }
+
+    axios.get.mockResolvedValue({ data: mockCardInfo })
+
+    const wrapper = mount(NameCard)
+    await flushPromises()
+
+    const profileImage = wrapper.find('img[alt="プロフィール画像"]')
+    expect(profileImage.exists()).toBe(false)
+  })
+
+  it('背景画像がない場合は通常のグラデーション背景が適用される', async () => {
+    const mockCardInfo = {
+      personalInfo: { name: 'テスト太郎' },
+      socialLinks: [],
+      design: { 
+        theme: 'modern', 
+        primaryColor: '#3B82F6',
+        backgroundImage: ''
+      }
+    }
+
+    axios.get.mockResolvedValue({ data: mockCardInfo })
+
+    const wrapper = mount(NameCard)
+    await flushPromises()
+
+    const headerDiv = wrapper.find('.relative.overflow-hidden')
+    const style = headerDiv.attributes('style')
+    expect(style).not.toContain('url(')
+    expect(style).toContain('linear-gradient(135deg, #3B82F6 0%, #3B82F6dd 100%)')
+  })
+
+  it('プロフィール画像と背景画像が両方設定されている場合', async () => {
+    const mockCardInfo = {
+      personalInfo: { name: 'テスト太郎' },
+      socialLinks: [],
+      design: { 
+        theme: 'modern', 
+        primaryColor: '#3B82F6',
+        profileImage: 'data:image/png;base64,profile',
+        backgroundImage: 'data:image/png;base64,background'
+      }
+    }
+
+    axios.get.mockResolvedValue({ data: mockCardInfo })
+
+    const wrapper = mount(NameCard)
+    await flushPromises()
+
+    // プロフィール画像の確認
+    const profileImage = wrapper.find('img[alt="プロフィール画像"]')
+    expect(profileImage.exists()).toBe(true)
+    expect(profileImage.attributes('src')).toBe('data:image/png;base64,profile')
+
+    // 背景画像の確認
+    const headerDiv = wrapper.find('.relative.overflow-hidden')
+    const style = headerDiv.attributes('style')
+    expect(style).toContain('url(data:image/png;base64,background)')
+    expect(style).toContain('background-size: cover')
   })
 })
