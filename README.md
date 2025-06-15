@@ -51,6 +51,24 @@ uvicorn main:app --reload
 
 ### Docker Composeでの実行
 
+#### 環境変数の設定
+
+まず、環境変数ファイルを設定します：
+
+```bash
+# テンプレートファイルをコピー
+cp .env.example .env
+
+# 設定ファイルを編集
+# 以下の値を実際の値に変更してください：
+# - SECRET_KEY: ランダムな秘密鍵
+# - ADMIN_PASSWORD: 管理者パスワード  
+# - TUNNEL_TOKEN: Cloudflareトンネルトークン（使用する場合）
+# - VITE_API_BASE: APIのベースURL
+```
+
+#### サービスの起動
+
 ```bash
 # サービスの起動
 docker-compose up -d

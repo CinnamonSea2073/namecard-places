@@ -8,7 +8,7 @@ services:
     ports:
       - "3001:3000"
     environment:
-      - VITE_API_BASE=http://localhost:8000
+      - VITE_API_BASE=${VITE_API_BASE}
     depends_on:
       - backend
     volumes:
@@ -22,32 +22,25 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - SECRET_KEY=your-production-secret-key-change-this
-      - ADMIN_PASSWORD=your-admin-password-change-this
+      - SECRET_KEY=${SECRET_KEY}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
     volumes:
       - ./backend:/app
+      - ./config.json:/app/config.json:ro
+      - ./config.example.json:/app/config.example.json:ro
       - namecard_data:/app/data
+
   cloudflare-tunnel:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
-    command: |
-      sh -c "
-      if [ ! -z \"$$TUNNEL_TOKEN\" ]; then
-        echo 'コネクタトークンが設定されています。トンネルを開始します...'
-        cloudflared tunnel --config /etc/cloudflared/config.yml run --token $$TUNNEL_TOKEN
-      elif [ -f /etc/cloudflared/config.yml ] && [ -d /etc/cloudflared/credentials ]; then
-        echo 'Cloudflareトンネル設定ファイルが見つかりました。トンネルを開始します...'
-        cloudflared tunnel --config /etc/cloudflared/config.yml run
-      else
-        echo 'Cloudflareトンネルの設定が不完全です。'
-        echo '以下のいずれかの方法でセットアップしてください：'
-        echo '1. TUNNEL_TOKEN環境変数にコネクタトークンを設定'
-        echo '2. 従来の設定ファイル方式でセットアップ'
-        echo '詳細は README.md の「Cloudflareトンネルの利用」セクションを参照してください。'
-        sleep 30
-        exit 1
-      fi
-      "
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --config
+      - /etc/cloudflared/config.yml
+      - run
+      - --token
+      - ${TUNNEL_TOKEN}
     volumes:
       - ./cloudflare-tunnel.yml:/etc/cloudflared/config.yml:ro
       - ~/.cloudflared:/etc/cloudflared/credentials:ro
@@ -56,7 +49,7 @@ services:
       - backend
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN:-}  # .envファイルまたは環境変数からトークンを取得
-      - TUNNEL_METRICS=0.0.0.0:8081
+      - TUNNEL_METRICS=${TUNNEL_METRICS:-0.0.0.0:8081}
     ports:
       - "8081:8081"  # メトリクスポート（オプション）
     networks:

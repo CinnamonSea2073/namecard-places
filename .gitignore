@@ -63,8 +63,10 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
-# Environments
+# Environments and sensitive files
 .env
+.env.local
+.env.*.local
 .venv
 env/
 venv/

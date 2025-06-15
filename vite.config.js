@@ -6,7 +6,8 @@ export default defineConfig({
   plugins: [vue()],
   server: {
     host: '0.0.0.0',
-    port: 3001
+    port: 3001,
+    allowedHosts: ['firstmet.cinnamon.works']
   },
   define: {
     global: 'globalThis'
