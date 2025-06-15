@@ -92,8 +92,7 @@ const loadAdminData = async () => {
 const loadConfig = async () => {
   configLoading.value = true
   configError.value = ''
-  try {
-    const response = await axios.get(`${API_BASE}/api/admin/config`, {
+  try {    const response = await axios.get(`${API_BASE}/api/admin/config`, {
       params: { admin_password: adminPassword.value }
     })
     config.value = response.data
@@ -657,8 +656,7 @@ const getStatusColor = () => {
                     type="color"
                     class="w-full h-10 border border-gray-300 rounded-lg"
                   />
-                </div>
-              </div>
+                </div>              </div>
             </div>
 
             <!-- 保存ボタン -->

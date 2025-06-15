@@ -37,8 +37,7 @@
       "icon": "instagram", 
       "enabled": false
     }
-  ],
-  "design": {
+  ],  "design": {
     "primaryColor": "#3B82F6",
     "accentColor": "#10B981",
     "backgroundColor": "#F8FAFC",

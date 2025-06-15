@@ -726,8 +726,7 @@ describe('AdminPanel', () => {
     expect(wrapper.vm.personalInfo.name).toBe('初期名前')
 
     // 設定更新をシミュレート（refreshTriggerの変更）
-    axios.get.mockResolvedValueOnce({ data: updatedConfig })
-    await wrapper.setProps({ refreshTrigger: 1 })
+    axios.get.mockResolvedValueOnce({ data: updatedConfig })    await wrapper.setProps({ refreshTrigger: 1 })
     await flushPromises()
 
     expect(wrapper.vm.personalInfo.name).toBe('更新名前')
